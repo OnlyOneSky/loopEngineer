@@ -4,6 +4,7 @@ The safety-critical connectors (running tests, opening the PR artifact) are OURS
 and are never exposed for the agent to call — the agent cannot certify itself.
 """
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -14,19 +15,19 @@ def run_tests(repo: Path) -> dict:
 
     Uses sys.executable (the interpreter running the loop) so tests run under the
     same venv; the `-m pytest` form prepends cwd to sys.path so the target package
-    in the worktree imports cleanly."""
-    proc = subprocess.run([sys.executable, "-m", "pytest", "-q"],
-                          cwd=repo, capture_output=True, text=True)
+    in the worktree imports cleanly.
+    Suppresses bytecode + pytest cache so the worktree stays clean for the
+    post-run protected-path check."""
+    env = {**os.environ, "PYTHONDONTWRITEBYTECODE": "1"}
+    proc = subprocess.run([sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider"],
+                          cwd=repo, capture_output=True, text=True, env=env)
     return {"passed": proc.returncode == 0, "summary": proc.stdout + proc.stderr}
 
 
 def git_changed_paths(repo: Path) -> list[str]:
     out = subprocess.run(["git", "-C", str(repo), "status", "--porcelain"],
                          capture_output=True, text=True).stdout
-    # Exclude untracked ('??') entries — those are build artifacts (e.g. __pycache__)
-    # not actor edits; the protect check cares only about tracked-file modifications.
-    return [line[3:] for line in out.splitlines()
-            if line.strip() and not line.startswith("??")]
+    return [line[3:] for line in out.splitlines() if line.strip()]
 
 
 def git_revert_paths(repo: Path, paths: list[str]) -> None:

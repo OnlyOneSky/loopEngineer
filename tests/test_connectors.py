@@ -37,6 +37,13 @@ def test_changed_paths_and_revert(tmp_path):
     assert connectors.git_changed_paths(repo) == []
 
 
+def test_run_tests_leaves_worktree_clean(tmp_path):
+    repo = _init_repo(tmp_path)
+    connectors.run_tests(repo)
+    # No __pycache__/.pytest_cache untracked artifacts left behind.
+    assert connectors.git_changed_paths(repo) == []
+
+
 def test_write_pr_artifact(tmp_path):
     run_dir = tmp_path / "run"
     run_dir.mkdir()

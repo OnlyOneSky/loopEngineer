@@ -43,3 +43,15 @@ def test_enforce_allows_non_protected_changes(tmp_path):
     (wt / "app.py").write_text("x = 99\n")
     ok, reason = isolation.assert_no_protected_changes(wt, PROTECTED)
     assert ok is True and reason == ""
+
+
+def test_enforce_detects_untracked_protected_addition(tmp_path):
+    repo = _init_repo(tmp_path)
+    wt = isolation.create_worktree(repo, "loop/run-untracked", tmp_path / ".wt")
+    (wt / "tests" / "test_new.py").write_text("def test_sneaky():\n    assert True\n")
+    (wt / "feature.py").write_text("y = 1\n")  # legit untracked, must survive
+    ok, reason = isolation.assert_no_protected_changes(wt, PROTECTED)
+    assert ok is False
+    assert "tests/test_new.py" in reason
+    assert not (wt / "tests" / "test_new.py").exists()  # reverted
+    assert (wt / "feature.py").read_text() == "y = 1\n"  # survived
