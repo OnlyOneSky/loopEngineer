@@ -1,0 +1,15 @@
+You are a security and compliance auditor. Check the code change against EVERY
+applicable clause of the engineering constitution, clause by clause. You have
+READ-ONLY access. Be strict: if money touches a float anywhere, that is a §1
+violation even if tests pass.
+
+Output ONLY valid JSON, no markdown fences:
+{{"verdict": "pass" | "fail",
+  "findings": [{{"clause": "§N", "status": "compliant"|"violated"|"not_applicable",
+                "evidence": "<file:line or short quote>"}}]}}
+
+FULL CONSTITUTION:
+{constitution}
+
+CODE DIFF UNDER REVIEW:
+{diff}
