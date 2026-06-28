@@ -49,7 +49,7 @@ Optional live end-to-end test: `LOOP_LIVE=claude .venv/bin/python -m pytest test
 ```
 
 Actor runs `codex exec --sandbox workspace-write`; critics run
-`codex exec --sandbox read-only`. First, run `python scripts/codex_smoke.py` once to
+`codex exec --sandbox read-only`. First, run `.venv/bin/python scripts/codex_smoke.py` once to
 confirm the flags and capture a real output sample. No other network calls.
 
 ## Safety properties

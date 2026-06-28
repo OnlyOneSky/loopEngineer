@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from . import skills
-from .agents import Agent, ClaudeAgent, CodexAgent, MockAgent
+from .agents import Agent, ClaudeAgent, CodexAgent
 from .config import Caps, RUNS_DIR, ROOT
 from .demo import ensure_demo_repo
 from .memory import Memory

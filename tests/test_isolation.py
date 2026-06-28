@@ -55,3 +55,29 @@ def test_enforce_detects_untracked_protected_addition(tmp_path):
     assert "tests/test_new.py" in reason
     assert not (wt / "tests" / "test_new.py").exists()  # reverted
     assert (wt / "feature.py").read_text() == "y = 1\n"  # survived
+
+
+def test_enforce_reverts_staged_protected_tamper(tmp_path):
+    repo = _init_repo(tmp_path)
+    wt = isolation.create_worktree(repo, "loop/run-staged", tmp_path / ".wt")
+    (wt / "tests" / "test_x.py").write_text("def test_ok():\n    assert True  # weakened\n")
+    subprocess.run(["git", "-C", str(wt), "add", "tests/test_x.py"], check=True)  # STAGE the tamper
+    ok, reason = isolation.assert_no_protected_changes(wt, PROTECTED)
+    assert ok is False
+    assert "tests/test_x.py" in reason
+    # Reverted despite being staged: content back to original, nothing staged.
+    assert (wt / "tests" / "test_x.py").read_text() == "def test_ok():\n    assert True\n"
+    staged = subprocess.run(["git", "-C", str(wt), "diff", "--cached", "--name-only"],
+                            capture_output=True, text=True).stdout
+    assert "tests/test_x.py" not in staged
+
+
+def test_enforce_removes_staged_new_protected_file(tmp_path):
+    repo = _init_repo(tmp_path)
+    wt = isolation.create_worktree(repo, "loop/run-stagednew", tmp_path / ".wt")
+    (wt / "tests" / "test_evil.py").write_text("def test_evil():\n    assert True\n")
+    subprocess.run(["git", "-C", str(wt), "add", "tests/test_evil.py"], check=True)  # stage a NEW file
+    ok, reason = isolation.assert_no_protected_changes(wt, PROTECTED)
+    assert ok is False
+    assert "tests/test_evil.py" in reason
+    assert not (wt / "tests" / "test_evil.py").exists()  # removed

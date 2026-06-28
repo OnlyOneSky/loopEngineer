@@ -27,13 +27,27 @@ def run_tests(repo: Path) -> dict:
 def git_changed_paths(repo: Path) -> list[str]:
     out = subprocess.run(["git", "-C", str(repo), "status", "--porcelain"],
                          capture_output=True, text=True).stdout
-    return [line[3:] for line in out.splitlines() if line.strip()]
+    paths = []
+    for line in out.splitlines():
+        if not line.strip():
+            continue
+        entry = line[3:]
+        if " -> " in entry:                 # rename/copy: "old -> new"
+            old, new = entry.split(" -> ", 1)
+            paths.extend([old, new])
+        else:
+            paths.append(entry)
+    return paths
 
 
 def git_revert_paths(repo: Path, paths: list[str]) -> None:
     if not paths:
         return
-    # Discard tracked changes; remove untracked additions to protected paths.
+    # Make index AND working tree match HEAD for these paths, defeating even a
+    # STAGED tamper (git add): reset unstages, checkout restores tracked content
+    # from the now-clean index, clean removes any untracked/newly-added file.
+    subprocess.run(["git", "-C", str(repo), "reset", "-q", "--", *paths],
+                   capture_output=True, text=True)
     subprocess.run(["git", "-C", str(repo), "checkout", "--", *paths],
                    capture_output=True, text=True)
     subprocess.run(["git", "-C", str(repo), "clean", "-fdq", "--", *paths],

@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 MAX_ITERATIONS = 6
-MAX_WALL_SECONDS = 1200
+MAX_WALL_SECONDS = 1200  # soft cap: checked at each iteration boundary, not mid-stage
 PROTECTED = ("tests/", "constitution.md")
 
 ROOT = Path(__file__).resolve().parent.parent
