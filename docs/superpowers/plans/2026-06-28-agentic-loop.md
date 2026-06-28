@@ -10,8 +10,9 @@
 
 ## Global Constraints
 
-- Python 3.11+ (uses `X | None` and `tuple[...]` builtins generics).
-- No third-party runtime dependencies — stdlib only. `pytest` is dev/test + the loop's gate.
+- Python 3.11+ (uses `X | None` and `tuple[...]` builtins generics). **Interpreter on this machine: `.venv/bin/python` — a Python 3.13 virtualenv with pytest already created by the controller. Substitute `.venv/bin/python` for `python`/`python3` in EVERY `Run:` command in this plan** (the bare `python3` here is 3.9.6 and would fail on the union syntax). `.venv/` is gitignored.
+- No third-party runtime dependencies — stdlib only. `pytest` (the loop's test gate + the prototype's own tests) is the sole dev dependency, installed in the venv.
+- The loop's `run_tests` invokes pytest via `sys.executable` (the interpreter running the loop), never a hardcoded `"python"`, so tests run under the same 3.13 venv. The `-m pytest` form prepends cwd to `sys.path`, so a worktree run resolves the target package's imports.
 - Three agent backends behind one `Agent` seam (identical contract): `MockAgent` (offline tests), `ClaudeAgent` (real runs on the dev machine via `claude -p`), `CodexAgent` (production work machine via `codex exec`). Selected by `--agent {mock,claude,codex}`, default `claude`.
 - Production runtime is **Codex CLI only**. Actor = `codex exec --sandbox workspace-write`; critics = `codex exec --sandbox read-only`. Dev `ClaudeAgent`: actor = `claude -p --permission-mode acceptEdits --allowedTools "Read,Edit,Write"`; critic = `claude -p --allowedTools "Read" --output-format json` (parse `json.loads(stdout)["result"]`, then extract the JSON verdict).
 - Safety caps are owned by our code, never the agent: `MAX_ITERATIONS = 6`, `MAX_WALL_SECONDS = 1200`.
@@ -515,12 +516,17 @@ and are never exposed for the agent to call — the agent cannot certify itself.
 """
 import json
 import subprocess
+import sys
 from pathlib import Path
 
 
 def run_tests(repo: Path) -> dict:
-    """DETERMINISTIC GATE. We run the tests ourselves; the agent never self-certifies."""
-    proc = subprocess.run(["python", "-m", "pytest", "-q"],
+    """DETERMINISTIC GATE. We run the tests ourselves; the agent never self-certifies.
+
+    Uses sys.executable (the interpreter running the loop) so tests run under the
+    same venv; the `-m pytest` form prepends cwd to sys.path so the target package
+    in the worktree imports cleanly."""
+    proc = subprocess.run([sys.executable, "-m", "pytest", "-q"],
                           cwd=repo, capture_output=True, text=True)
     return {"passed": proc.returncode == 0, "summary": proc.stdout + proc.stderr}
 
@@ -1451,27 +1457,31 @@ artifact for a human to merge — or escalates safely at the iteration/time cap.
 
 `loopengine/orchestrator.py` is thin glue. See `docs/superpowers/specs/` for the design.
 
+> Setup (once): `python3.13 -m venv .venv && .venv/bin/python -m pip install pytest`.
+> All commands below use `.venv/bin/python` (Python 3.13). On the work machine,
+> use whatever 3.11+ interpreter has pytest.
+
 ## Run the offline test suite (mock agent, no keys)
 
 ```bash
-python -m pytest -q                      # the prototype's own tests, incl. the 3-attempt demo
+.venv/bin/python -m pytest -q            # the prototype's own tests, incl. the 3-attempt demo
 ```
 
 ## Run for real on THIS dev machine (Claude Code)
 
 ```bash
-python -m loopengine run \
+.venv/bin/python -m loopengine run \
   --spec demo/bankapp/specs/transfer-limit.md \
   --repo demo/bankapp \
   --agent claude        # default; verifies every loop step with a real agent
 ```
 
-Optional live end-to-end test: `LOOP_LIVE=claude python -m pytest tests/test_live_claude.py -v`.
+Optional live end-to-end test: `LOOP_LIVE=claude .venv/bin/python -m pytest tests/test_live_claude.py -v`.
 
 ## Run for the demo on the work machine (Codex CLI)
 
 ```bash
-python -m loopengine run \
+.venv/bin/python -m loopengine run \
   --spec demo/bankapp/specs/transfer-limit.md \
   --repo demo/bankapp \
   --agent codex
