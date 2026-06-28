@@ -23,7 +23,10 @@ def run_tests(repo: Path) -> dict:
 def git_changed_paths(repo: Path) -> list[str]:
     out = subprocess.run(["git", "-C", str(repo), "status", "--porcelain"],
                          capture_output=True, text=True).stdout
-    return [line[3:] for line in out.splitlines() if line.strip()]
+    # Exclude untracked ('??') entries — those are build artifacts (e.g. __pycache__)
+    # not actor edits; the protect check cares only about tracked-file modifications.
+    return [line[3:] for line in out.splitlines()
+            if line.strip() and not line.startswith("??")]
 
 
 def git_revert_paths(repo: Path, paths: list[str]) -> None:
