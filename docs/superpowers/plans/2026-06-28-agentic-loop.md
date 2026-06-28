@@ -13,7 +13,7 @@
 - Python 3.11+ (uses `X | None` and `tuple[...]` builtins generics). **Interpreter on this machine: `.venv/bin/python` — a Python 3.13 virtualenv with pytest already created by the controller. Substitute `.venv/bin/python` for `python`/`python3` in EVERY `Run:` command in this plan** (the bare `python3` here is 3.9.6 and would fail on the union syntax). `.venv/` is gitignored.
 - No third-party runtime dependencies — stdlib only. `pytest` (the loop's test gate + the prototype's own tests) is the sole dev dependency, installed in the venv.
 - The loop's `run_tests` invokes pytest via `sys.executable` (the interpreter running the loop), never a hardcoded `"python"`, so tests run under the same 3.13 venv. The `-m pytest` form prepends cwd to `sys.path`, so a worktree run resolves the target package's imports.
-- Three agent backends behind one `Agent` seam (identical contract): `MockAgent` (offline tests), `ClaudeAgent` (real runs on the dev machine via `claude -p`), `CodexAgent` (production work machine via `codex exec`). Selected by `--agent {mock,claude,codex}`, default `claude`.
+- Three agent backends behind one `Agent` seam (identical contract): `MockAgent` (offline tests, injected via `trigger.run()` — not a CLI choice), `ClaudeAgent` (real runs on the dev machine via `claude -p`), `CodexAgent` (production work machine via `codex exec`). CLI selects with `--agent {claude,codex}`, default `claude`.
 - Production runtime is **Codex CLI only**. Actor = `codex exec --sandbox workspace-write`; critics = `codex exec --sandbox read-only`. Dev `ClaudeAgent`: actor = `claude -p --permission-mode acceptEdits --allowedTools "Read,Edit,Write"`; critic = `claude -p --allowedTools "Read" --output-format json` (parse `json.loads(stdout)["result"]`, then extract the JSON verdict).
 - Safety caps are owned by our code, never the agent: `MAX_ITERATIONS = 6`, `MAX_WALL_SECONDS = 1200`.
 - Protected paths (read-only to the actor, enforced after each turn): `("tests/", "constitution.md")`.
@@ -924,7 +924,7 @@ class MockAgent:
 - [ ] **Step 4: Run tests to verify they pass**
 
 Run: `python -m pytest tests/test_agents.py -v`
-Expected: PASS (7 tests).
+Expected: PASS (6 tests).
 
 - [ ] **Step 5: Commit**
 

@@ -72,8 +72,9 @@ three interchangeable backends sharing an identical contract:
 | `CodexAgent` | work machine (prod) | Real runs via `codex exec`. The only network-permitted tool there. |
 
 Only the thin subprocess/parse layer differs between `ClaudeAgent` and `CodexAgent`;
-the loop, gates, memory, and isolation are shared and identical. Backend is chosen
-by a `--agent {mock,claude,codex}` flag (default `claude` on the dev machine).
+the loop, gates, memory, and isolation are shared and identical. The CLI backend is
+chosen by a `--agent {claude,codex}` flag (default `claude` on the dev machine);
+`MockAgent` is test-only and injected directly via the `trigger.run()` API.
 
 **Headless invocations (verified against Claude Code CLI guidance):**
 - Actor (`ClaudeAgent`): `claude -p "<prompt>" --permission-mode acceptEdits
