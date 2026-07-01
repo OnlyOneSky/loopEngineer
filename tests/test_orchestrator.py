@@ -94,3 +94,45 @@ def test_escalates_on_iteration_cap(tmp_path):
     assert state["status"] == "escalated"
     assert len(state["iterations"]) == 3
     assert "Tests failed" in state["iterations"][-1]["last_error"]
+
+
+class _SpyReporter:
+    def __init__(self):
+        self.events = []
+
+    def run_start(self, *a): self.events.append(("run_start", a))
+    def iteration_start(self, *a): self.events.append(("iteration_start", a))
+    def phase(self, *a): self.events.append(("phase", a))
+    def retry(self, *a): self.events.append(("retry", a))
+    def finished(self, *a): self.events.append(("finished", a))
+
+
+def test_reporter_narrates_converge(tmp_path):
+    repo = _bank_repo(tmp_path)
+    agent = MockAgent(actor_steps=[_write_decimal], security_fn=_security_fn)
+    mem = Memory.create(tmp_path / "runs", "run-r", "spec.md", str(repo), "loop/run-r", Caps())
+    spy = _SpyReporter()
+    orchestrator.run_loop("# Landing page\n", repo, agent, Caps(), mem,
+                          "constitution", tmp_path / ".wt", reporter=spy)
+    kinds = [e[0] for e in spy.events]
+    assert kinds[0] == "run_start"
+    # all five phase letters were reported in order on the converging attempt
+    phase_letters = [e[1][0] for e in spy.events if e[0] == "phase"]
+    assert phase_letters == ["A", "B", "C", "D", "E"]
+    assert spy.events[-1][0] == "finished"
+    assert spy.events[-1][1][0] == "converged"
+    # spec summary passed to run_start is the first line, hash-stripped
+    assert spy.events[0][1][1] == "Landing page"
+
+
+def test_reporter_narrates_retry_then_escalation(tmp_path):
+    repo = _bank_repo(tmp_path)
+    agent = MockAgent(actor_steps=[_write_gt] * 2)   # boundary bug every attempt
+    caps = Caps(max_iterations=2)
+    mem = Memory.create(tmp_path / "runs", "run-e", "spec.md", str(repo), "loop/run-e", caps)
+    spy = _SpyReporter()
+    orchestrator.run_loop("spec", repo, agent, caps, mem,
+                          "constitution", tmp_path / ".wt", reporter=spy)
+    assert [e for e in spy.events if e[0] == "retry"]         # at least one retry
+    assert spy.events[-1][0] == "finished"
+    assert spy.events[-1][1][0] == "escalated"

@@ -52,6 +52,25 @@ Actor runs `codex exec --sandbox workspace-write`; critics run
 `codex exec --sandbox read-only`. First, run `.venv/bin/python scripts/codex_smoke.py` once to
 confirm the flags and capture a real output sample. No other network calls.
 
+## Demo scenarios (watch the loop phase by phase)
+
+Every run now narrates itself live — `A Actor → B Enforce → C Tests → D QA →
+E Security → verdict` — to the terminal, and (when Slack env is set) as a threaded
+status stream. The presenter's script is [`docs/DEMO-RUNBOOK.md`](docs/DEMO-RUNBOOK.md).
+The arc: *it just works → it fixes its own mistake → it knows when to stop.*
+
+| Scenario | Target | Outcome |
+|----------|--------|---------|
+| Protected-path revert (deterministic vignette) | `scripts/demo_protected_path.py` | tamper caught & reverted, then converge |
+| 1-iteration success | `demo/website` | converges first try (static site) |
+| Self-correction (~2 iterations) | `demo/bankapp` + `specs/transfer-limit-terse.md` | fails a gate, self-corrects, converges |
+| Escalation at the cap | `demo/impossible` | contradictory spec → never converges → escalates |
+
+New CLI flags: `--max-iterations N` (per-run cap, clamped to the hard ceiling of 6)
+and `--constitution PATH` (default: the repo's own `constitution.md`, else
+`skills/constitution.md`). Slack status stream is opt-in via `SLACK_BOT_TOKEN` +
+`SLACK_CHANNEL` (channel ID); see the runbook.
+
 ## Safety properties
 
 - Bounded: `MAX_ITERATIONS=6`, `MAX_WALL_SECONDS=1200` (owned by our code).
