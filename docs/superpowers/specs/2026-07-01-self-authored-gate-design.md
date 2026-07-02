@@ -109,6 +109,16 @@ spec.md (human-approved)
    orchestrator.run_loop()  →  A → B → C → D → E  (unchanged)
 ```
 
+> **"pytest" in 0a is a scope pin, not a language assumption** (§2 non-goals,
+> §6a). The *product* language is free — pytest can gate non-Python artifacts
+> from the outside (the website demo gates HTML/CSS by parsing files) — but an
+> **in-language interface** (importing the module under test) forces test
+> language = code language. Non-Python in-language gates therefore need the
+> repo's native framework via a per-repo test command: future work. Long-term
+> the gate should be idiomatic to the target repo anyway, since generated tests
+> merge into its permanent suite; the same §6a layers (spec Stack section +
+> conventions file) will resolve the framework when the runner is pluggable.
+
 The actor never sees the test-author's reasoning — only the frozen test files,
 exactly as it sees human tests today. Independence holds at the invocation level
 even though one `Agent` object may implement both roles (separate LLM calls,
@@ -203,7 +213,12 @@ fourth then binds the *actor* mechanically:
 
 The gate runner stays pytest this iteration (`connectors.run_tests`), so specs
 must target a Python-runnable gate (note: the website demo's file-parsing tests
-are pytest too — the *product* need not be Python, only the gate).
+are pytest too — the *product* need not be Python, only the gate). The boundary:
+pytest can gate any product **from the outside** (files, subprocesses, HTTP),
+but an **in-language** contract — "importable module X exposing function Y" —
+forces the test into the code's own language/framework. When the runner becomes
+pluggable (future work), the framework is resolved by the same layers above,
+and generated gates become idiomatic to the repo whose suite they join.
 
 ## 7. Safety analysis
 
