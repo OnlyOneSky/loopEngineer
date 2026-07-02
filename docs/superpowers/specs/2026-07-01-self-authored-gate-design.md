@@ -311,12 +311,11 @@ its own code, and our deterministic check still held" story. Added to
 | `--gate provided` (default) | Skip Phase 0 entirely; current behavior (diff base stays `main`). |
 | Gate escalates | Run ends `escalated` with reason `gate:<why>`; no loop, no artifact, `main` untouched. |
 
-## 11. Open decisions (confirm before planning)
+## 11. Decisions (resolved 2026-07-02)
 
-1. **New demo repo vs. strip bankapp's tests.** Recommend a *new* `demo/greenfield-
-   transfer/` so bankapp keeps its human-test scenario for contrast. (Alt: a
-   `--gate synthesize` variant that ignores bankapp's committed tests.)
-2. **`gate.py` as a new module vs. a function in `trigger.py`.** Recommend a new
-   module — Phase 0 has its own retry/verify shape and deserves isolation.
-3. **Reporter surface.** Recommend a dedicated `gate(status, detail)` callback
-   (clean) over overloading `phase()` with a fake letter.
+1. **Demo repo:** a new `demo/greenfield-transfer/` — bankapp keeps its
+   human-test scenario for contrast.
+2. **Module boundary:** `gate.py` as a new module — Phase 0 has its own
+   retry/verify shape and deserves isolation.
+3. **Reporter surface:** a dedicated `gate(status, detail)` callback rather than
+   overloading `phase()` with a fake letter.
