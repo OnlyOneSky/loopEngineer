@@ -41,6 +41,11 @@ the actor, satisfies all three **and** the no-human-coding goal.
   story than pre-baked test files.
 - **Backward compatible**: repos that already ship human tests keep working
   unchanged (synthesis is opt-in).
+- **Tests ship with the feature**: the gate commit is the parent of the
+  implementation commit, so merging the loop branch adds both. The generated
+  acceptance tests join the permanent suite — and because phase C runs the whole
+  suite and `tests/` is protected, every later run must keep prior features green.
+  The suite compounds run over run without a human writing a test.
 
 ### Non-goals (this iteration)
 - A spec DSL / examples-table compiler (the "examples-as-spec" option). Noted as
@@ -52,6 +57,10 @@ the actor, satisfies all three **and** the no-human-coding goal.
   maker/checker sandbox model. This sits *in front of* the existing loop.
 - Regenerating or amending the gate mid-loop. The gate is synthesized once and
   frozen for the run.
+- Suite-hygiene / dedup passes over accumulated generated tests. The human merge
+  review is the backstop this iteration; a periodic cleanup pass is future work.
+- Non-pytest gate runners. `connectors.run_tests` stays pytest, so specs must
+  target a Python-runnable gate; a per-repo test command is future work.
 
 ## 3. Constraints & key decisions
 
@@ -61,9 +70,12 @@ the actor, satisfies all three **and** the no-human-coding goal.
 | When | **Once, before the loop**, committed onto a dedicated `gate/<run-id>` branch | The actor's worktree branches from the gate commit, so the gate is present and frozen from iteration 1 — and the target repo's `main` is never touched. |
 | Where tests land | `tests/` (already in `PROTECTED`) | Frozen + read-only to the actor via the existing phase-B guard; no config change. |
 | Test-author write scope | May write **only** under `tests/`; anything else is reverted | Symmetric inverse of the actor's rule — the gate author must not implement the feature. |
-| Vacuity rule | At least one generated test MUST fail on the untouched repo | A gate that is all-green before implementation is vacuous/misread; counts as a **failed attempt → feedback + retry**, escalate at the cap. |
+| Baseline rule (two-sided) | On the untouched repo: the **existing suite stays green** AND **≥1 NEW test fails** | All-green new tests = vacuous/misread gate; a red existing test = the generated gate contradicts the current suite. Either way: **failed attempt → feedback + retry**, escalate at the cap. |
 | AC coverage rule | Every `AC-N` in the spec maps to ≥1 generated test (by test name / marker) | Vacuity alone is weak — one honest red test could carry five vacuous ones. Mechanical check, no LLM. |
 | Determinism rule | The baseline run executes **twice**; results must be identical | A flaky gate breaks the loop's core assumption; cheap because acceptance tests are fast. |
+| Language & layout | Layered context: spec **"Stack & interface"** section → target-repo conventions file (`AGENTS.md`/`CLAUDE.md`) → existing code; the frozen gate then pins the actor mechanically | Both CLIs read conventions files natively from the worktree cwd — zero engine code. Greenfield repos must pin the stack in the spec and ship a conventions file. See §6a. |
+| Generated tests' home | `tests/acceptance/test_<feature-slug>.py` | Provenance visible, grouped per feature, still under protected `tests/`. |
+| Tests after merge | Gate tests merge with the implementation (gate commit is the implementation commit's parent) | The acceptance suite compounds; phase C runs the whole suite, so prior features are regression-protected for free. |
 | Bad-collection handling | Bounded retry with feedback (`GATE_MAX_ATTEMPTS`), then escalate | Mirrors the actor retry loop; a gate that won't even import is not a gate. |
 | Opt-in | `--gate {provided,synthesize}` (default `provided`) | Backward compatible; existing demos and human-test repos are unaffected. |
 | Offline testing | `MockAgent.test_author` scriptable step | Same double that powers the current suite; no keys/network. |
@@ -85,7 +97,7 @@ spec.md (human-approved)
 │  0c. Collect check: tests must import/collect             │
 │         └ fail → bounded retry with feedback              │
 │  0d. Verify on the UNTOUCHED code (baseline run):         │
-│         · vacuity — ≥1 test must fail                     │
+│         · vacuity — ≥1 NEW test red · old tests green     │
 │         · AC coverage — every AC-N maps to ≥1 test        │
 │         · determinism — run twice, identical results      │
 │         └ any miss → failed attempt → feedback + retry    │
@@ -135,7 +147,9 @@ separate contexts).
   false convergence now requires author, actor, AND QA to misread the same way.
 - **`isolation.py`** — reuse `assert_no_protected_changes`; add the inverse guard
   `assert_only_paths(worktree, ("tests/",))` for the test-author turn (0b).
-- **`config.py`** — add `GATE_MAX_ATTEMPTS = 3`. `PROTECTED` unchanged.
+- **`config.py`** — add `GATE_MAX_ATTEMPTS = 3`. `PROTECTED` gains the repo
+  conventions files (`AGENTS.md`, `CLAUDE.md`) so the actor cannot rewrite the
+  conventions it is graded under. `tests/` already covers the generated gate.
 - **`trigger.py`** — `--gate {provided,synthesize}` flag; when `synthesize`, call
   `gate.synthesize_gate()` before `run_loop()`; on gate escalation, finish the run
   as `escalated` without entering the loop.
@@ -157,6 +171,39 @@ separate contexts).
    from iteration 1, and any actor edit to it is reverted by phase B.
 5. All diffs (QA, security, PR artifact) use the gate commit as base, so the PR
    diff is implementation-only; the artifact lists the gate's test files alongside.
+6. **On human merge of the loop branch, the gate tests land together with the
+   implementation** — the acceptance suite for feature N becomes part of the
+   permanent, protected `tests/` for feature N+1's run. Nothing extra to build:
+   the lineage (gate commit → implementation commit) makes it automatic.
+
+## 6a. How the agents know language & layout
+
+Neither the actor nor the test-author prompt names a programming language.
+Resolution is layered context — the first three inform the *test-author*, the
+fourth then binds the *actor* mechanically:
+
+1. **Spec — "Stack & interface" section (human-approved intent).** Required for
+   greenfield specs: language, test framework, module layout, entry-point
+   signature(s). Both agents receive the spec verbatim, so both inherit it.
+2. **Target-repo conventions file (`AGENTS.md` / `CLAUDE.md`).** Both backends
+   read these natively from their working directory (`codex exec` → `AGENTS.md`,
+   `claude -p` → `CLAUDE.md`), and both the actor and the test-author run with
+   cwd = a worktree of the target repo — so this reaches them with **zero engine
+   code**. It carries the per-repo "how and where": source layout, test directory
+   (`tests/acceptance/`), naming, style. Seeded once per repo by a human — that is
+   configuration, not coding, the same pattern as the repo-local
+   `constitution.md`. Listed in `PROTECTED` so the actor cannot edit its own
+   conventions.
+3. **Existing code.** In a brownfield repo the module being extended pins language
+   and structure by example; the test-author reads real interfaces off disk.
+4. **The frozen gate.** Once the tests exist, their imports pin the module path,
+   names, signatures, and exception types — the actor cannot converge in the
+   wrong language because phase C fails on import until the graded interface
+   exists exactly.
+
+The gate runner stays pytest this iteration (`connectors.run_tests`), so specs
+must target a Python-runnable gate (note: the website demo's file-parsing tests
+are pytest too — the *product* need not be Python, only the gate).
 
 ## 7. Safety analysis
 
@@ -186,8 +233,11 @@ actor is graded against a wrong-but-independent rubric. Mitigations built in:
 ## 8. Demo scenario (new)
 
 `demo/greenfield-transfer/` (or bankapp with tests removed): a prose spec, an
-incomplete `transfer.py`, **no `tests/`**. Run with `--gate synthesize`. The
-audience watches:
+incomplete `transfer.py`, **no `tests/`**. The repo ships an `AGENTS.md`
+conventions file (Python 3 · pytest · `tests/acceptance/` layout) and the spec
+carries a **"Stack & interface"** section — together these pin language and
+layout before any agent runs (§6a). Run with `--gate synthesize`. The audience
+watches:
 
 ```
 G Gate    ✓  authored 4 acceptance tests · 3 red on baseline (gate is real)
@@ -207,6 +257,10 @@ its own code, and our deterministic check still held" story. Added to
     baseline → all ACs mapped → freeze → committed onto `gate/<run-id>` + protected.
   - vacuity: author writes an all-green test → failed attempt with feedback →
     escalate after `GATE_MAX_ATTEMPTS`.
+  - suite contradiction: author writes a test that breaks an *existing* green
+    test on baseline → failed attempt; feedback names the broken test.
+  - conventions protected: actor edits `AGENTS.md` in the loop → reverted by
+    phase B (extend the existing isolation tests).
   - AC coverage: author drops one AC → retry feedback names the missing `AC-N`.
   - determinism: author writes a randomised test (mocked to flip results) →
     detected via double baseline run → failed attempt.
@@ -229,6 +283,8 @@ its own code, and our deterministic check still held" story. Added to
 | Vacuous gate (all green on untouched code) | Failed attempt → feedback ("your tests pass on the unimplemented stub — they don't test the new behavior") → retry; escalate after cap. |
 | An `AC-N` has no mapped test | Failed attempt → feedback names the uncovered criteria → retry; escalate after cap. |
 | Baseline run is nondeterministic (two runs differ) | Failed attempt → feedback → retry; escalate after cap. |
+| Generated test fails an *existing* suite member on baseline | Failed attempt → feedback names the contradiction → retry; escalate after cap. |
+| Greenfield repo with no conventions file and no Stack section in the spec | Test-author picks the stack implicitly — legal but undesirable; the runbook/spec template requires a Stack & interface section for greenfield. |
 | Test-author writes outside `tests/` | Non-`tests/` writes reverted before freeze. |
 | `--gate provided` (default) | Skip Phase 0 entirely; current behavior (diff base stays `main`). |
 | Gate escalates | Run ends `escalated` with reason `gate:<why>`; no loop, no artifact, `main` untouched. |
