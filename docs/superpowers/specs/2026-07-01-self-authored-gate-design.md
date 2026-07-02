@@ -59,8 +59,10 @@ the actor, satisfies all three **and** the no-human-coding goal.
   frozen for the run.
 - Suite-hygiene / dedup passes over accumulated generated tests. The human merge
   review is the backstop this iteration; a periodic cleanup pass is future work.
-- Non-pytest gate runners. `connectors.run_tests` stays pytest, so specs must
-  target a Python-runnable gate; a per-repo test command is future work.
+- Shipping additional gate *runners* beyond pytest. The design is
+  runner-agnostic — the gate is written in the target repo's own framework and
+  executed by the repo's trusted test command (§6a) — but the prototype
+  implements only the pytest runner, so its demos target pytest-runnable gates.
 
 ## 3. Constraints & key decisions
 
@@ -74,7 +76,9 @@ the actor, satisfies all three **and** the no-human-coding goal.
 | AC coverage rule | Every `AC-N` in the spec maps to ≥1 generated test (by test name / marker) | Vacuity alone is weak — one honest red test could carry five vacuous ones. Mechanical check, no LLM. |
 | Determinism rule | The baseline run executes **twice**; results must be identical | A flaky gate breaks the loop's core assumption; cheap because acceptance tests are fast. |
 | Language & layout | Layered context: spec **"Stack & interface"** section → target-repo conventions file (`AGENTS.md`/`CLAUDE.md`) → existing code; the frozen gate then pins the actor mechanically | Both CLIs read conventions files natively from the worktree cwd — zero engine code. Greenfield repos must pin the stack in the spec and ship a conventions file. See §6a. |
-| Generated tests' home | `tests/acceptance/test_<feature-slug>.py` | Provenance visible, grouped per feature, still under protected `tests/`. |
+| Test framework | The **target repo's own framework**, resolved by the same layers (Java → JUnit, TypeScript → Jest, Python → pytest) | The gate merges into the repo's permanent suite, so it must be idiomatic to that repo. Not a pytest design; pytest is the prototype's runner. |
+| Gate runner | The repo's **test command**, owned by trusted config (conventions), **never by the agent**; contract: exit code 0 = pass | An actor that could pick its own test command could grade itself. Prototype: pytest hardcoded in `connectors.run_tests`. |
+| Generated tests' home | `tests/acceptance/`, named per the repo's framework convention (prototype: `test_<feature-slug>.py`) | Provenance visible, grouped per feature, still under protected `tests/`. |
 | Tests after merge | Gate tests merge with the implementation (gate commit is the implementation commit's parent) | The acceptance suite compounds; phase C runs the whole suite, so prior features are regression-protected for free. |
 | Bad-collection handling | Bounded retry with feedback (`GATE_MAX_ATTEMPTS`), then escalate | Mirrors the actor retry loop; a gate that won't even import is not a gate. |
 | Opt-in | `--gate {provided,synthesize}` (default `provided`) | Backward compatible; existing demos and human-test repos are unaffected. |
@@ -92,7 +96,8 @@ spec.md (human-approved)
 ┌─────────────────────────────────────────────────────────┐
 │ Phase 0 — Gate synthesis (new; runs once, bounded)       │
 │  0a. test_author agent reads spec (+ code interfaces),   │
-│      writes pytest acceptance tests under tests/ only     │
+│      writes acceptance tests under tests/ only, in the    │
+│      repo's own test framework (§6a)                      │
 │  0b. Enforce: keep only tests/ writes; revert the rest    │
 │  0c. Collect check: tests must import/collect             │
 │         └ fail → bounded retry with feedback              │
@@ -109,15 +114,14 @@ spec.md (human-approved)
    orchestrator.run_loop()  →  A → B → C → D → E  (unchanged)
 ```
 
-> **"pytest" in 0a is a scope pin, not a language assumption** (§2 non-goals,
-> §6a). The *product* language is free — pytest can gate non-Python artifacts
-> from the outside (the website demo gates HTML/CSS by parsing files) — but an
-> **in-language interface** (importing the module under test) forces test
-> language = code language. Non-Python in-language gates therefore need the
-> repo's native framework via a per-repo test command: future work. Long-term
-> the gate should be idiomatic to the target repo anyway, since generated tests
-> merge into its permanent suite; the same §6a layers (spec Stack section +
-> conventions file) will resolve the framework when the runner is pluggable.
+> **The gate is framework-general by design.** The test-author writes the gate
+> in the target repo's own language and test framework, resolved by the §6a
+> layers — a Java product gets JUnit acceptance tests, TypeScript gets Jest,
+> Python gets pytest. Phase C's contract is only: *run the repo's trusted test
+> command; exit code 0 = pass*. That command is owned by human config
+> (conventions), **never by the agent** — an actor that could pick its own test
+> command could grade itself. **Prototype scope:** only the pytest runner is
+> implemented, so the shipped demos use pytest-runnable gates (§2 non-goals).
 
 The actor never sees the test-author's reasoning — only the frozen test files,
 exactly as it sees human tests today. Independence holds at the invocation level
@@ -143,9 +147,11 @@ separate contexts).
   escalation reason. Kept out of `orchestrator.py` so the loop stays thin.
   AC coverage is mechanical: extract `AC-N` ids from the spec, match them against
   generated test names/comments (`ac1` / `AC-1`); any unmapped AC → retry feedback.
-- **`connectors.py`** — reuse `run_tests`; add a small helper to detect
-  *collection* errors vs. *assertion* failures (pytest exit code 2/5 vs 1) so
-  0c and 0d can tell "won't import" from "fails as expected".
+- **`connectors.py`** — `run_tests` is the runner seam: it executes the repo's
+  trusted test command and maps exit code 0 → pass (prototype: pytest,
+  hardcoded). Add a small helper to distinguish *suite-won't-load* errors from
+  *test failures* (pytest exit codes 2/5 vs 1) so 0c and 0d can tell "won't
+  import" from "fails as expected"; future runners map their own codes here.
 - **`orchestrator.py` / `connectors.git_diff`** — thread a `base` ref (default
   `"main"`) through `run_loop` so the QA/security diff and the PR artifact compare
   against the **gate commit**, not `main`. The PR diff stays implementation-only;
@@ -211,14 +217,15 @@ fourth then binds the *actor* mechanically:
    wrong language because phase C fails on import until the graded interface
    exists exactly.
 
-The gate runner stays pytest this iteration (`connectors.run_tests`), so specs
-must target a Python-runnable gate (note: the website demo's file-parsing tests
-are pytest too — the *product* need not be Python, only the gate). The boundary:
-pytest can gate any product **from the outside** (files, subprocesses, HTTP),
-but an **in-language** contract — "importable module X exposing function Y" —
-forces the test into the code's own language/framework. When the runner becomes
-pluggable (future work), the framework is resolved by the same layers above,
-and generated gates become idiomatic to the repo whose suite they join.
+The same layers resolve the **test framework**: a Java repo yields JUnit
+acceptance tests, a TypeScript repo yields Jest, a Python repo yields pytest —
+the gate is idiomatic to the repo whose permanent suite it joins. Phase C needs
+only a deterministic **test command** with exit-code truth, and that command is
+owned by trusted config — never chosen or editable by the agent, or the actor
+could grade itself. **Prototype scope:** `connectors.run_tests` implements the
+pytest runner only, so the shipped demos use gates pytest can run — Python
+in-language, or any product gated from the outside (the website demo gates
+HTML/CSS by parsing files).
 
 ## 7. Safety analysis
 

@@ -1,6 +1,6 @@
 <svg width="720" viewBox="0 0 720 880" role="img" xmlns="http://www.w3.org/2000/svg">
 <title>Spec-to-PR agentic loop with self-authored acceptance gate</title>
-<desc>A vertical flow: a human approves the spec, a manual trigger reads it, then a new phase 0 (gate synthesis) has an independent test-author agent write pytest acceptance tests, enforced to tests/ only, verified on the untouched code (at least one red, every acceptance criterion covered, deterministic), and frozen onto a gate branch. The actor worktree branches off the frozen gate, then the existing actor-critic loop of up to six iterations runs actor, protected-path enforcement, pytest, QA critic and security critic. On success it converges to a PR artifact for human merge; a failed gate or the iteration cap escalates safely. Skills feed both the gate phase and the loop; Memory records the gate outcome and every iteration.</desc>
+<desc>A vertical flow: a human approves the spec, a manual trigger reads it, then a new phase 0 (gate synthesis) has an independent test-author agent write acceptance tests in the target repo's own test framework, enforced to tests/ only, verified on the untouched code (at least one red, every acceptance criterion covered, deterministic), and frozen onto a gate branch. The actor worktree branches off the frozen gate, then the existing actor-critic loop of up to six iterations runs actor, protected-path enforcement, the repo's deterministic test command, QA critic and security critic. On success it converges to a PR artifact for human merge; a failed gate or the iteration cap escalates safely. Skills feed both the gate phase and the loop; Memory records the gate outcome and every iteration.</desc>
 <defs>
 <style>
 .c-gray rect{fill:#EEF1F4;stroke:#98A2B3;stroke-width:1.2}
@@ -49,7 +49,7 @@ text{font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif}
 
 <g class="c-blue"><rect x="210" y="142" width="260" height="42" rx="8"/>
 <text x="340" y="160" font-size="13" font-weight="500" text-anchor="middle">Test author (gate maker)</text>
-<text x="340" y="175" font-size="11" text-anchor="middle" opacity="0.7">writes pytest acceptance tests from the spec</text></g>
+<text x="340" y="175" font-size="11" text-anchor="middle" opacity="0.7">acceptance tests in the repo's own framework</text></g>
 <line x1="340" y1="184" x2="340" y2="192" stroke="#9CA3AF" stroke-width="1.5" marker-end="url(#ah)"/>
 
 <g class="c-teal"><rect x="210" y="194" width="260" height="42" rx="8"/>
@@ -91,7 +91,7 @@ text{font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif}
 
 <g class="c-purple"><rect x="210" y="574" width="260" height="42" rx="8"/>
 <text x="340" y="592" font-size="13" font-weight="500" text-anchor="middle">Tests</text>
-<text x="340" y="607" font-size="11" text-anchor="middle" opacity="0.7">pytest — the synthesized gate decides</text></g>
+<text x="340" y="607" font-size="11" text-anchor="middle" opacity="0.7">repo test command — synthesized gate decides</text></g>
 <line x1="340" y1="616" x2="340" y2="624" stroke="#9CA3AF" stroke-width="1.5" marker-end="url(#ah)"/>
 
 <g class="c-blue"><rect x="210" y="626" width="260" height="42" rx="8"/>
