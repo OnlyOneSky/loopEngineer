@@ -1,0 +1,145 @@
+<svg width="720" viewBox="0 0 720 880" role="img" xmlns="http://www.w3.org/2000/svg">
+<title>Spec-to-PR agentic loop with self-authored acceptance gate</title>
+<desc>A vertical flow: a human approves the spec, a manual trigger reads it, then a new phase 0 (gate synthesis) has an independent test-author agent write pytest acceptance tests, enforced to tests/ only, verified on the untouched code (at least one red, every acceptance criterion covered, deterministic), and frozen onto a gate branch. The actor worktree branches off the frozen gate, then the existing actor-critic loop of up to six iterations runs actor, protected-path enforcement, pytest, QA critic and security critic. On success it converges to a PR artifact for human merge; a failed gate or the iteration cap escalates safely. Skills feed both the gate phase and the loop; Memory records the gate outcome and every iteration.</desc>
+<defs>
+<style>
+.c-gray rect{fill:#EEF1F4;stroke:#98A2B3;stroke-width:1.2}
+.c-gray text{fill:#344054}
+.c-blue rect{fill:#E6F1FB;stroke:#2E7CD6;stroke-width:1.2}
+.c-blue text{fill:#0C447C}
+.c-teal rect{fill:#DAF3EF;stroke:#0E9C8A;stroke-width:1.2}
+.c-teal text{fill:#0B5A50}
+.c-purple rect{fill:#EEE7FB;stroke:#8B5CF6;stroke-width:1.2}
+.c-purple text{fill:#4C1D95}
+.c-green rect{fill:#E4F5E9;stroke:#34A853;stroke-width:1.2}
+.c-green text{fill:#145A32}
+.c-amber rect{fill:#FBF0D5;stroke:#E0A100;stroke-width:1.2}
+.c-amber text{fill:#7A4F01}
+text{font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif}
+</style>
+<marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#9CA3AF"/></marker>
+</defs>
+
+<rect x="0" y="0" width="720" height="880" fill="#FFFFFF"/>
+
+<g class="c-gray"><rect x="20" y="11" width="12" height="12" rx="2"/></g>
+<text x="38" y="22" font-size="11" fill="#6B7280">Automations (trigger)</text>
+<g class="c-teal"><rect x="250" y="11" width="12" height="12" rx="2"/></g>
+<text x="268" y="22" font-size="11" fill="#6B7280">Worktrees (isolate/enforce)</text>
+<g class="c-blue"><rect x="470" y="11" width="12" height="12" rx="2"/></g>
+<text x="488" y="22" font-size="11" fill="#6B7280">Sub-agents</text>
+<g class="c-purple"><rect x="20" y="31" width="12" height="12" rx="2"/></g>
+<text x="38" y="42" font-size="11" fill="#6B7280">Connectors</text>
+<g class="c-green"><rect x="250" y="31" width="12" height="12" rx="2"/></g>
+<text x="268" y="42" font-size="11" fill="#6B7280">Skills</text>
+<g class="c-amber"><rect x="470" y="31" width="12" height="12" rx="2"/></g>
+<text x="488" y="42" font-size="11" fill="#6B7280">Memory</text>
+
+<text x="104" y="74" font-size="11" fill="#6B7280" text-anchor="middle">human gate #1</text>
+<text x="104" y="88" font-size="11" fill="#6B7280" text-anchor="middle">approve the spec</text>
+<line x1="160" y1="83" x2="208" y2="83" stroke="#9CA3AF" stroke-width="1.5" marker-end="url(#ah)"/>
+
+<g class="c-gray"><rect x="210" y="62" width="260" height="42" rx="8"/>
+<text x="340" y="80" font-size="13" font-weight="500" text-anchor="middle">Trigger — manual</text>
+<text x="340" y="95" font-size="11" text-anchor="middle" opacity="0.7">read approved spec.md · caps · init memory</text></g>
+<line x1="340" y1="104" x2="340" y2="116" stroke="#9CA3AF" stroke-width="1.5" marker-end="url(#ah)"/>
+
+<rect x="188" y="118" width="304" height="258" rx="12" fill="none" stroke="#C7CDD6" stroke-width="1.3" stroke-dasharray="5 4"/>
+<text x="340" y="135" font-size="11" text-anchor="middle" fill="#6B7280">phase 0 — gate synthesis · once · ≤3 attempts · NEW</text>
+
+<g class="c-blue"><rect x="210" y="142" width="260" height="42" rx="8"/>
+<text x="340" y="160" font-size="13" font-weight="500" text-anchor="middle">Test author (gate maker)</text>
+<text x="340" y="175" font-size="11" text-anchor="middle" opacity="0.7">writes pytest acceptance tests from the spec</text></g>
+<line x1="340" y1="184" x2="340" y2="192" stroke="#9CA3AF" stroke-width="1.5" marker-end="url(#ah)"/>
+
+<g class="c-teal"><rect x="210" y="194" width="260" height="42" rx="8"/>
+<text x="340" y="212" font-size="13" font-weight="500" text-anchor="middle">Enforce tests/-only</text>
+<text x="340" y="227" font-size="11" text-anchor="middle" opacity="0.7">revert any write outside tests/</text></g>
+<line x1="340" y1="236" x2="340" y2="244" stroke="#9CA3AF" stroke-width="1.5" marker-end="url(#ah)"/>
+
+<g class="c-purple"><rect x="210" y="246" width="260" height="42" rx="8"/>
+<text x="340" y="264" font-size="13" font-weight="500" text-anchor="middle">Verify gate — baseline run</text>
+<text x="340" y="279" font-size="11" text-anchor="middle" opacity="0.7">collects · ≥1 red · all ACs covered · run ×2</text></g>
+<line x1="340" y1="288" x2="340" y2="296" stroke="#9CA3AF" stroke-width="1.5" marker-end="url(#ah)"/>
+
+<g class="c-teal"><rect x="210" y="298" width="260" height="42" rx="8"/>
+<text x="340" y="316" font-size="13" font-weight="500" text-anchor="middle">Freeze</text>
+<text x="340" y="331" font-size="11" text-anchor="middle" opacity="0.7">commit onto gate/&lt;run-id&gt; → read-only to actor</text></g>
+<text x="340" y="360" font-size="11" text-anchor="middle" fill="#6B7280">invalid gate → feedback → re-author · cap → escalate</text>
+
+<path d="M 210 267 L 200 267 L 200 163 L 210 163" fill="none" stroke="#9CA3AF" stroke-width="1.5" marker-end="url(#ah)"/>
+
+<line x1="340" y1="376" x2="340" y2="388" stroke="#9CA3AF" stroke-width="1.5" marker-end="url(#ah)"/>
+
+<g class="c-teal"><rect x="210" y="390" width="260" height="42" rx="8"/>
+<text x="340" y="408" font-size="13" font-weight="500" text-anchor="middle">Isolate</text>
+<text x="340" y="423" font-size="11" text-anchor="middle" opacity="0.7">git worktree · branched off the frozen gate</text></g>
+<line x1="340" y1="432" x2="340" y2="444" stroke="#9CA3AF" stroke-width="1.5" marker-end="url(#ah)"/>
+
+<rect x="188" y="446" width="304" height="316" rx="12" fill="none" stroke="#C7CDD6" stroke-width="1.3" stroke-dasharray="5 4"/>
+<text x="340" y="463" font-size="11" text-anchor="middle" fill="#6B7280">actor-critic loop · max 6 iters / 20 min</text>
+
+<g class="c-blue"><rect x="210" y="470" width="260" height="42" rx="8"/>
+<text x="340" y="488" font-size="13" font-weight="500" text-anchor="middle">Actor (maker)</text>
+<text x="340" y="503" font-size="11" text-anchor="middle" opacity="0.7">workspace-write · never edits the gate</text></g>
+<line x1="340" y1="512" x2="340" y2="520" stroke="#9CA3AF" stroke-width="1.5" marker-end="url(#ah)"/>
+
+<g class="c-teal"><rect x="210" y="522" width="260" height="42" rx="8"/>
+<text x="340" y="540" font-size="13" font-weight="500" text-anchor="middle">Enforce protected paths</text>
+<text x="340" y="555" font-size="11" text-anchor="middle" opacity="0.7">git diff · rollback tests/ &amp; constitution</text></g>
+<line x1="340" y1="564" x2="340" y2="572" stroke="#9CA3AF" stroke-width="1.5" marker-end="url(#ah)"/>
+
+<g class="c-purple"><rect x="210" y="574" width="260" height="42" rx="8"/>
+<text x="340" y="592" font-size="13" font-weight="500" text-anchor="middle">Tests</text>
+<text x="340" y="607" font-size="11" text-anchor="middle" opacity="0.7">pytest — the synthesized gate decides</text></g>
+<line x1="340" y1="616" x2="340" y2="624" stroke="#9CA3AF" stroke-width="1.5" marker-end="url(#ah)"/>
+
+<g class="c-blue"><rect x="210" y="626" width="260" height="42" rx="8"/>
+<text x="340" y="644" font-size="13" font-weight="500" text-anchor="middle">QA critic (checker)</text>
+<text x="340" y="659" font-size="11" text-anchor="middle" opacity="0.7">read-only · re-reads spec, flags misreads</text></g>
+<line x1="340" y1="668" x2="340" y2="676" stroke="#9CA3AF" stroke-width="1.5" marker-end="url(#ah)"/>
+
+<g class="c-blue"><rect x="210" y="678" width="260" height="42" rx="8"/>
+<text x="340" y="696" font-size="13" font-weight="500" text-anchor="middle">Security critic (checker)</text>
+<text x="340" y="711" font-size="11" text-anchor="middle" opacity="0.7">read-only vs constitution §1–§5</text></g>
+<text x="340" y="744" font-size="11" text-anchor="middle" fill="#6B7280">any gate fails → log to memory → re-enter actor</text>
+
+<path d="M 210 699 L 200 699 L 200 491 L 210 491" fill="none" stroke="#9CA3AF" stroke-width="1.5" marker-end="url(#ah)"/>
+
+<g class="c-green"><rect x="14" y="500" width="150" height="116" rx="8"/>
+<text x="89" y="524" font-size="13" font-weight="500" text-anchor="middle">skills/</text>
+<text x="89" y="543" font-size="11" text-anchor="middle" opacity="0.7">constitution.md</text>
+<text x="89" y="560" font-size="11" text-anchor="middle" opacity="0.7">prompts/*.txt</text>
+<text x="89" y="577" font-size="11" text-anchor="middle" opacity="0.7">+ test_author.txt · new</text>
+<text x="89" y="596" font-size="11" text-anchor="middle" opacity="0.7">read-only to actor</text></g>
+<line x1="164" y1="558" x2="186" y2="558" stroke="#9CA3AF" stroke-width="1.5" marker-end="url(#ah)"/>
+<line x1="100" y1="498" x2="184" y2="300" stroke="#9CA3AF" stroke-width="1.5" marker-end="url(#ah)"/>
+
+<g class="c-amber"><rect x="546" y="470" width="160" height="268" rx="8"/>
+<text x="626" y="494" font-size="13" font-weight="500" text-anchor="middle">memory</text>
+<text x="626" y="516" font-size="11" text-anchor="middle" opacity="0.7">run state file</text>
+<text x="626" y="534" font-size="11" text-anchor="middle" opacity="0.7">gate outcome · new</text>
+<text x="626" y="552" font-size="11" text-anchor="middle" opacity="0.7">attempt · elapsed</text>
+<text x="626" y="570" font-size="11" text-anchor="middle" opacity="0.7">last_error</text>
+<text x="626" y="588" font-size="11" text-anchor="middle" opacity="0.7">gate verdicts</text>
+<text x="626" y="614" font-size="11" text-anchor="middle" opacity="0.7">the loop's spine —</text>
+<text x="626" y="630" font-size="11" text-anchor="middle" opacity="0.7">inspectable &amp;</text>
+<text x="626" y="646" font-size="11" text-anchor="middle" opacity="0.7">resumable</text></g>
+<line x1="494" y1="590" x2="544" y2="590" stroke="#9CA3AF" stroke-width="1.5" marker-end="url(#ah)"/>
+<text x="519" y="582" font-size="11" fill="#6B7280" text-anchor="middle">writes/iter</text>
+<line x1="492" y1="300" x2="544" y2="472" stroke="#9CA3AF" stroke-width="1.5" marker-end="url(#ah)"/>
+<text x="530" y="368" font-size="11" fill="#6B7280">gate record</text>
+
+<path d="M 300 762 L 252 784" fill="none" stroke="#9CA3AF" stroke-width="1.5" marker-end="url(#ah)"/>
+<text x="238" y="778" font-size="11" fill="#6B7280">all pass</text>
+<path d="M 380 762 L 428 784" fill="none" stroke="#9CA3AF" stroke-width="1.5" marker-end="url(#ah)"/>
+<text x="430" y="778" font-size="11" fill="#6B7280">cap hit</text>
+
+<g class="c-green"><rect x="120" y="788" width="216" height="50" rx="8"/>
+<text x="228" y="810" font-size="13" font-weight="500" text-anchor="middle">Converge</text>
+<text x="228" y="826" font-size="11" text-anchor="middle" opacity="0.7">commit + PR artifact -> human merge</text></g>
+
+<g class="c-gray"><rect x="356" y="788" width="216" height="50" rx="8"/>
+<text x="464" y="810" font-size="13" font-weight="500" text-anchor="middle">Escalate</text>
+<text x="464" y="826" font-size="11" text-anchor="middle" opacity="0.7">no valid gate or cap hit · stop safely</text></g>
+</svg>

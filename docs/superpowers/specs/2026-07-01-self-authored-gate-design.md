@@ -58,10 +58,12 @@ the actor, satisfies all three **and** the no-human-coding goal.
 | Decision | Choice | Rationale |
 |---|---|---|
 | Who authors C's tests | A `test_author` **agent**, not the actor, not a human | Independence from the maker is the safety property; the human approves the spec upstream. |
-| When | **Once, before the loop**, output committed onto the base branch | The actor's worktree branches from that commit, so the gate is present and frozen from iteration 1. |
+| When | **Once, before the loop**, committed onto a dedicated `gate/<run-id>` branch | The actor's worktree branches from the gate commit, so the gate is present and frozen from iteration 1 — and the target repo's `main` is never touched. |
 | Where tests land | `tests/` (already in `PROTECTED`) | Frozen + read-only to the actor via the existing phase-B guard; no config change. |
 | Test-author write scope | May write **only** under `tests/`; anything else is reverted | Symmetric inverse of the actor's rule — the gate author must not implement the feature. |
-| Vacuity rule | At least one generated test MUST fail on the untouched repo | A gate that is all-green before implementation is vacuous/misread; fail closed → escalate. |
+| Vacuity rule | At least one generated test MUST fail on the untouched repo | A gate that is all-green before implementation is vacuous/misread; counts as a **failed attempt → feedback + retry**, escalate at the cap. |
+| AC coverage rule | Every `AC-N` in the spec maps to ≥1 generated test (by test name / marker) | Vacuity alone is weak — one honest red test could carry five vacuous ones. Mechanical check, no LLM. |
+| Determinism rule | The baseline run executes **twice**; results must be identical | A flaky gate breaks the loop's core assumption; cheap because acceptance tests are fast. |
 | Bad-collection handling | Bounded retry with feedback (`GATE_MAX_ATTEMPTS`), then escalate | Mirrors the actor retry loop; a gate that won't even import is not a gate. |
 | Opt-in | `--gate {provided,synthesize}` (default `provided`) | Backward compatible; existing demos and human-test repos are unaffected. |
 | Offline testing | `MockAgent.test_author` scriptable step | Same double that powers the current suite; no keys/network. |
@@ -82,11 +84,15 @@ spec.md (human-approved)
 │  0b. Enforce: keep only tests/ writes; revert the rest    │
 │  0c. Collect check: tests must import/collect             │
 │         └ fail → bounded retry with feedback              │
-│  0d. Vacuity check: run on UNTOUCHED code; ≥1 must fail   │
-│         └ all green → escalate ("vacuous gate")           │
-│  0e. Freeze: commit generated tests onto the base branch  │
+│  0d. Verify on the UNTOUCHED code (baseline run):         │
+│         · vacuity — ≥1 test must fail                     │
+│         · AC coverage — every AC-N maps to ≥1 test        │
+│         · determinism — run twice, identical results      │
+│         └ any miss → failed attempt → feedback + retry    │
+│  0e. Freeze: commit the gate onto gate/<run-id>           │
 └─────────────────────────────────────────────────────────┘
-        │  (gate now part of main; read-only to the actor)
+        │  (actor worktree branches from the gate commit;
+        │   gate read-only to the actor via phase B)
         ▼
    orchestrator.run_loop()  →  A → B → C → D → E  (unchanged)
 ```
@@ -109,12 +115,24 @@ separate contexts).
     from the actor call.
   - `MockAgent`: `test_author_steps` list, scriptable like `actor_steps`.
 - **`gate.py`** (new module): `synthesize_gate(spec_text, repo, agent, caps,
-  reporter) -> GateResult`. Owns Phase 0: the author→enforce→collect→vacuity→freeze
-  sequence and its bounded retry. Returns success (gate frozen) or an escalation
-  reason. Kept out of `orchestrator.py` so the loop stays thin.
+  reporter) -> GateResult`. Owns Phase 0: the author→enforce→collect→verify→freeze
+  sequence and its bounded retry. Verify = vacuity + AC coverage + determinism
+  (double baseline run). Returns the gate ref (branch/commit) on success or an
+  escalation reason. Kept out of `orchestrator.py` so the loop stays thin.
+  AC coverage is mechanical: extract `AC-N` ids from the spec, match them against
+  generated test names/comments (`ac1` / `AC-1`); any unmapped AC → retry feedback.
 - **`connectors.py`** — reuse `run_tests`; add a small helper to detect
   *collection* errors vs. *assertion* failures (pytest exit code 2/5 vs 1) so
   0c and 0d can tell "won't import" from "fails as expected".
+- **`orchestrator.py` / `connectors.git_diff`** — thread a `base` ref (default
+  `"main"`) through `run_loop` so the QA/security diff and the PR artifact compare
+  against the **gate commit**, not `main`. The PR diff stays implementation-only;
+  the artifact additionally lists the gate's test files so the human reviewer sees
+  both what changed and what it was graded against.
+- **`skills/prompts/qa_critic.txt`** — one added instruction: *also flag when the
+  test suite itself misses or contradicts an acceptance criterion*. The QA critic
+  already re-reads the spec, making it a third independent interpretation — a
+  false convergence now requires author, actor, AND QA to misread the same way.
 - **`isolation.py`** — reuse `assert_no_protected_changes`; add the inverse guard
   `assert_only_paths(worktree, ("tests/",))` for the test-author turn (0b).
 - **`config.py`** — add `GATE_MAX_ATTEMPTS = 3`. `PROTECTED` unchanged.
@@ -124,21 +142,21 @@ separate contexts).
 - **`reporter.py`** — add a `gate(status, detail)` callback; Console prints a
   `G Gate ✓ authored 4 tests (3 red on baseline)` line, Slack posts one reply.
 - **`memory.py`** — record the gate outcome in `state` (`"gate": {...}`): attempts,
-  test files produced, vacuity result. Keeps the run auditable end to end.
+  test files produced, gate ref (`gate/<run-id>` commit), baseline red/green split,
+  AC-coverage map. Keeps the run auditable end to end.
 
 ## 6. Data flow & freeze mechanism
 
 1. `trigger.run` (gate=synthesize): `ensure_demo_repo(repo)` → read spec.
-2. `gate.synthesize_gate` runs the test-author against `repo` (base), in a scratch
-   worktree branched from main.
-3. On success it **commits the generated `tests/` onto `main`** of the base repo.
-4. `run_loop` then calls `isolation.create_worktree(repo, branch, root)` which
-   branches from `main` — so the actor's worktree contains the frozen gate from
-   iteration 1, and any actor edit to it is reverted by phase B.
-
-> Prototype caveat (documented): gate synthesis commits onto the demo repo's
-> `main`. For a real repo you would synthesize onto a feature branch; out of scope
-> here, same spirit as the existing "commits onto demo main" behavior.
+2. `gate.synthesize_gate` runs the test-author against `repo` in a scratch
+   worktree branched from `main`.
+3. On success it **commits the generated `tests/` onto a `gate/<run-id>` branch**
+   — the target repo's `main` is never touched.
+4. `run_loop` then creates the actor worktree **branched from the gate commit**
+   (base ref threaded through), so the actor's worktree contains the frozen gate
+   from iteration 1, and any actor edit to it is reverted by phase B.
+5. All diffs (QA, security, PR artifact) use the gate commit as base, so the PR
+   diff is implementation-only; the artifact lists the gate's test files alongside.
 
 ## 7. Safety analysis
 
@@ -154,8 +172,14 @@ separate contexts).
 actor is graded against a wrong-but-independent rubric. Mitigations built in:
 - **Vacuity check (0d)** catches the most common misreads and any gamed/empty gate
   mechanically — a gate that's green before implementation is rejected.
-- **Independence** means a false pass needs the *author* and the *actor* to misread
-  the same way — far less likely than an actor grading itself.
+- **AC coverage check (0d)** ensures no acceptance criterion is silently dropped —
+  a misread-by-omission is caught mechanically, not by luck.
+- **Determinism check (0d)** rejects flaky gates before the loop depends on them.
+- **QA critic as third reader (D)** re-reads the spec independently and is
+  instructed to flag a test suite that misses or contradicts a criterion — a false
+  convergence needs the author, the actor, AND the QA critic to misread the same way.
+- **Independence** of author and actor already makes a shared misread far less
+  likely than an actor grading itself.
 - Future levers (not this iteration): examples-style specs (less interpretation),
   optional human gate-review (`--review-gate`).
 
@@ -180,15 +204,20 @@ its own code, and our deterministic check still held" story. Added to
 
 - `gate.py` unit tests with `MockAgent.test_author`:
   - happy path: author writes the known bankapp tests → collect ok → 3 red on
-    baseline → freeze → committed onto main + protected.
-  - vacuity: author writes an all-green test → escalate `"vacuous gate"`.
+    baseline → all ACs mapped → freeze → committed onto `gate/<run-id>` + protected.
+  - vacuity: author writes an all-green test → failed attempt with feedback →
+    escalate after `GATE_MAX_ATTEMPTS`.
+  - AC coverage: author drops one AC → retry feedback names the missing `AC-N`.
+  - determinism: author writes a randomised test (mocked to flip results) →
+    detected via double baseline run → failed attempt.
   - bad collection: author writes a syntactically broken/`import`-failing test →
     bounded retry with feedback → escalate after `GATE_MAX_ATTEMPTS`.
   - scope: author also writes a non-tests file → it is reverted; only `tests/`
     survives.
 - End-to-end offline: `--gate synthesize` on a copied demo repo, mock test-author
-  + mock actor → converges; assert `state["gate"]` recorded and the generated
-  tests are the ones the loop ran against.
+  + mock actor → converges; assert `state["gate"]` recorded (attempts, gate ref,
+  red/green split), the loop ran against the generated tests, and the PR artifact
+  diff contains the implementation only (gate tests listed, not diffed).
 - `reporter` gains a `gate` callback → extend the existing reporter tests.
 
 ## 10. Error handling & edge cases
@@ -197,10 +226,12 @@ its own code, and our deterministic check still held" story. Added to
 |---|---|
 | Test-author writes no test files | Retry with feedback; escalate after cap. |
 | Generated tests don't collect (import/syntax error) | Detected via pytest exit code; retry with the error as feedback; escalate after cap. |
-| Vacuous gate (all green on untouched code) | Escalate immediately — do not enter the loop. |
+| Vacuous gate (all green on untouched code) | Failed attempt → feedback ("your tests pass on the unimplemented stub — they don't test the new behavior") → retry; escalate after cap. |
+| An `AC-N` has no mapped test | Failed attempt → feedback names the uncovered criteria → retry; escalate after cap. |
+| Baseline run is nondeterministic (two runs differ) | Failed attempt → feedback → retry; escalate after cap. |
 | Test-author writes outside `tests/` | Non-`tests/` writes reverted before freeze. |
-| `--gate provided` (default) | Skip Phase 0 entirely; current behavior. |
-| Gate escalates | Run ends `escalated` with reason `gate:<why>`; no loop, no artifact. |
+| `--gate provided` (default) | Skip Phase 0 entirely; current behavior (diff base stays `main`). |
+| Gate escalates | Run ends `escalated` with reason `gate:<why>`; no loop, no artifact, `main` untouched. |
 
 ## 11. Open decisions (confirm before planning)
 
