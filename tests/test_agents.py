@@ -1,5 +1,6 @@
 from pathlib import Path
-from loopengine import agents
+from loopengine import agents, skills
+from loopengine.agents import MockAgent
 
 
 def test_last_json_line_picks_final_json():
@@ -45,3 +46,21 @@ def test_mock_security_fn_override():
                                        "findings": [{"clause": "§1", "status": "violated",
                                                      "evidence": "float"}]})
     assert agent.security_critic("c", "d")["verdict"] == "fail"
+
+
+def test_test_author_prompt_loads_with_placeholders():
+    text = skills.prompt("test_author")
+    assert "{spec}" in text and "{last_error}" in text
+    assert "tests/acceptance" in text          # the author is told where tests go
+    assert "NOT" in text                       # ... and that it must not implement
+
+
+def test_mock_agent_test_author_steps_pop_in_order(tmp_path):
+    calls = []
+    agent = MockAgent(actor_steps=[],
+                      test_author_steps=[lambda wt: calls.append(("first", wt)),
+                                         lambda wt: calls.append(("second", wt))])
+    agent.test_author("spec", "", tmp_path)
+    agent.test_author("spec", "feedback", tmp_path)
+    assert [c[0] for c in calls] == ["first", "second"]
+    assert calls[0][1] == tmp_path

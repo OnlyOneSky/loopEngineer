@@ -43,6 +43,7 @@ def _extract_json(text: str) -> dict:
 
 class Agent(Protocol):
     def actor(self, spec: str, last_error: str, worktree: Path) -> None: ...
+    def test_author(self, spec: str, last_error: str, worktree: Path) -> None: ...
     def qa_critic(self, spec: str, diff: str, test_summary: str) -> dict: ...
     def security_critic(self, constitution: str, diff: str) -> dict: ...
 
@@ -52,6 +53,14 @@ class CodexAgent:
 
     def actor(self, spec: str, last_error: str, worktree: Path) -> None:
         prompt = skills.prompt("actor").format(spec=spec, last_error=last_error or "(first attempt)")
+        subprocess.run(
+            ["codex", "exec", "--sandbox", "workspace-write", "--json",
+             "--skip-git-repo-check", prompt],
+            cwd=worktree, capture_output=True, text=True, timeout=600)
+
+    def test_author(self, spec: str, last_error: str, worktree: Path) -> None:
+        prompt = skills.prompt("test_author").format(
+            spec=spec, last_error=last_error or "(first attempt)")
         subprocess.run(
             ["codex", "exec", "--sandbox", "workspace-write", "--json",
              "--skip-git-repo-check", prompt],
@@ -91,6 +100,16 @@ class ClaudeAgent:
              "--max-turns", str(self.max_turns)],
             cwd=worktree, capture_output=True, text=True, timeout=900)
 
+    def test_author(self, spec: str, last_error: str, worktree: Path) -> None:
+        prompt = skills.prompt("test_author").format(
+            spec=spec, last_error=last_error or "(first attempt)")
+        subprocess.run(
+            ["claude", "-p", prompt,
+             "--permission-mode", "acceptEdits",
+             "--allowedTools", "Read,Edit,Write",
+             "--max-turns", str(self.max_turns)],
+            cwd=worktree, capture_output=True, text=True, timeout=900)
+
     def qa_critic(self, spec: str, diff: str, test_summary: str) -> dict:
         return self._critic(skills.prompt("qa_critic").format(
             spec=spec, diff=diff, test_summary=test_summary))
@@ -119,13 +138,18 @@ class MockAgent:
 
     def __init__(self, actor_steps: list[Callable[[Path], None]],
                  qa_fn: Callable[[str, str, str], dict] | None = None,
-                 security_fn: Callable[[str, str], dict] | None = None):
+                 security_fn: Callable[[str, str], dict] | None = None,
+                 test_author_steps: list[Callable[[Path], None]] | None = None):
         self._steps = list(actor_steps)
+        self._author_steps = list(test_author_steps or [])
         self._qa = qa_fn or (lambda spec, diff, ts: {"verdict": "pass", "gaps": []})
         self._sec = security_fn or (lambda con, diff: {"verdict": "pass", "findings": []})
 
     def actor(self, spec: str, last_error: str, worktree: Path) -> None:
         self._steps.pop(0)(worktree)
+
+    def test_author(self, spec: str, last_error: str, worktree: Path) -> None:
+        self._author_steps.pop(0)(worktree)
 
     def qa_critic(self, spec: str, diff: str, test_summary: str) -> dict:
         return self._qa(spec, diff, test_summary)
