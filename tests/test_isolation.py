@@ -81,3 +81,33 @@ def test_enforce_removes_staged_new_protected_file(tmp_path):
     assert ok is False
     assert "tests/test_evil.py" in reason
     assert not (wt / "tests" / "test_evil.py").exists()  # removed
+
+
+from loopengine import config
+
+
+def _mini_repo(tmp_path):
+    repo = tmp_path / "mini"
+    (repo / "tests").mkdir(parents=True)
+    (repo / "tests" / "test_a.py").write_text("def test_a():\n    assert True\n")
+    (repo / "AGENTS.md").write_text("# conventions\n")
+    (repo / "app.py").write_text("x = 1\n")
+    subprocess.run(["git", "init", "-q", "-b", "main", str(repo)], check=True)
+    subprocess.run(["git", "-C", str(repo), "add", "-A"], check=True)
+    subprocess.run(["git", "-C", str(repo), "-c", "user.email=a@b.c",
+                    "-c", "user.name=t", "commit", "-q", "-m", "init"], check=True)
+    return repo
+
+
+def test_conventions_files_are_protected(tmp_path):
+    assert "AGENTS.md" in config.PROTECTED and "CLAUDE.md" in config.PROTECTED
+    repo = _mini_repo(tmp_path)
+    (repo / "AGENTS.md").write_text("# weakened by the actor\n")
+    ok, why = isolation.assert_no_protected_changes(repo, config.PROTECTED)
+    assert ok is False and "AGENTS.md" in why
+    # and the tamper was reverted
+    assert (repo / "AGENTS.md").read_text() == "# conventions\n"
+
+
+def test_gate_max_attempts_exists():
+    assert config.GATE_MAX_ATTEMPTS == 3

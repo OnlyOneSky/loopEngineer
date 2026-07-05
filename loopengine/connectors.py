@@ -21,7 +21,8 @@ def run_tests(repo: Path) -> dict:
     env = {**os.environ, "PYTHONDONTWRITEBYTECODE": "1"}
     proc = subprocess.run([sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider"],
                           cwd=repo, capture_output=True, text=True, env=env)
-    return {"passed": proc.returncode == 0, "summary": proc.stdout + proc.stderr}
+    return {"passed": proc.returncode == 0, "returncode": proc.returncode,
+            "summary": proc.stdout + proc.stderr}
 
 
 def git_changed_paths(repo: Path) -> list[str]:

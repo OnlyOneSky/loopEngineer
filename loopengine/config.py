@@ -4,7 +4,8 @@ from pathlib import Path
 
 MAX_ITERATIONS = 6
 MAX_WALL_SECONDS = 1200  # soft cap: checked at each iteration boundary, not mid-stage
-PROTECTED = ("tests/", "constitution.md")
+GATE_MAX_ATTEMPTS = 3    # phase 0 (gate synthesis) retry cap; owned by our code
+PROTECTED = ("tests/", "constitution.md", "AGENTS.md", "CLAUDE.md")
 
 ROOT = Path(__file__).resolve().parent.parent
 SKILLS_DIR = ROOT / "skills"

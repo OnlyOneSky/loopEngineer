@@ -53,3 +53,25 @@ def test_write_pr_artifact(tmp_path):
     assert path == run_dir / "pr-artifact.md"
     body = path.read_text()
     assert "add limit" in body and "diff text" in body and "verdict" in body
+
+
+def test_run_tests_reports_returncode(tmp_path):
+    # exit 5: a repo with no tests at all
+    empty = tmp_path / "empty"
+    empty.mkdir()
+    res = connectors.run_tests(empty)
+    assert res["returncode"] == 5 and res["passed"] is False
+
+    # exit 0: one passing test
+    ok = tmp_path / "ok"
+    (ok / "tests").mkdir(parents=True)
+    (ok / "tests" / "test_ok.py").write_text("def test_ok():\n    assert True\n")
+    res = connectors.run_tests(ok)
+    assert res["returncode"] == 0 and res["passed"] is True
+
+    # exit 1: one failing test
+    bad = tmp_path / "bad"
+    (bad / "tests").mkdir(parents=True)
+    (bad / "tests" / "test_bad.py").write_text("def test_bad():\n    assert False\n")
+    res = connectors.run_tests(bad)
+    assert res["returncode"] == 1 and res["passed"] is False
