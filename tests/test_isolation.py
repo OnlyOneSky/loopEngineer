@@ -111,3 +111,40 @@ def test_conventions_files_are_protected(tmp_path):
 
 def test_gate_max_attempts_exists():
     assert config.GATE_MAX_ATTEMPTS == 3
+
+
+def test_create_worktree_from_custom_base(tmp_path):
+    repo = _mini_repo(tmp_path)
+    # make a side branch with an extra file
+    subprocess.run(["git", "-C", str(repo), "checkout", "-q", "-b", "gate/x"], check=True)
+    (repo / "tests" / "test_gate_only.py").write_text("def test_g():\n    assert True\n")
+    subprocess.run(["git", "-C", str(repo), "add", "-A"], check=True)
+    subprocess.run(["git", "-C", str(repo), "-c", "user.email=a@b.c",
+                    "-c", "user.name=t", "commit", "-q", "-m", "gate"], check=True)
+    subprocess.run(["git", "-C", str(repo), "checkout", "-q", "main"], check=True)
+
+    wt_main = isolation.create_worktree(repo, "loop/a", tmp_path / "w1")
+    wt_gate = isolation.create_worktree(repo, "loop/b", tmp_path / "w2", base="gate/x")
+    try:
+        assert not (wt_main / "tests" / "test_gate_only.py").exists()
+        assert (wt_gate / "tests" / "test_gate_only.py").exists()
+    finally:
+        isolation.cleanup_worktree(repo, wt_main)
+        isolation.cleanup_worktree(repo, wt_gate)
+
+
+def test_enforce_author_scope_keeps_only_new_test_files(tmp_path):
+    repo = _mini_repo(tmp_path)
+    # the author: adds a new test under tests/acceptance (OK),
+    # writes implementation code (NOT OK), and modifies an existing test (NOT OK)
+    (repo / "tests" / "acceptance").mkdir()
+    (repo / "tests" / "acceptance" / "test_new.py").write_text("def test_n():\n    assert False\n")
+    (repo / "app.py").write_text("x = 2\n")
+    (repo / "tests" / "test_a.py").write_text("def test_a():\n    assert False\n")
+
+    kept, reverted = isolation.enforce_author_scope(repo)
+    assert kept == ["tests/acceptance/test_new.py"]
+    assert set(reverted) == {"app.py", "tests/test_a.py"}
+    assert (repo / "app.py").read_text() == "x = 1\n"                     # reverted
+    assert "assert True" in (repo / "tests" / "test_a.py").read_text()    # reverted
+    assert (repo / "tests" / "acceptance" / "test_new.py").exists()       # kept
