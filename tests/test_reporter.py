@@ -111,3 +111,37 @@ class _RecordingReporter:
     def phase(self, *a, **k): self.events.append("phase")
     def retry(self, *a, **k): self.events.append("retry")
     def finished(self, *a, **k): self.events.append("finished")
+    def gate(self, *a, **k): self.events.append("gate")
+
+
+def test_console_reporter_gate_line():
+    buf = io.StringIO()
+    r = ConsoleReporter(out=buf)
+    r.gate("info", "synthesizing acceptance gate (attempt 1/3)")
+    r.gate("ok", "frozen: 1 test file(s) · 3 red on baseline → gate/run-x")
+    r.gate("fail", "vacuous gate")
+    out = buf.getvalue()
+    assert "G Gate" in out
+    assert "•" in out and "✓" in out and "✗" in out
+    assert "gate/run-x" in out
+
+
+def test_slack_reporter_gate_before_run_start_becomes_root():
+    poster = _FakePoster()
+    r = SlackReporter(poster)
+    r.gate("ok", "frozen: 4 tests")
+    assert poster.calls[0][1] is None          # posted standalone
+    # the realistic --gate synthesize sequence: run_start fires AFTER the gate
+    # and must join the gate's thread, not start a new root
+    r.run_start("run-1", "spec", "MockAgent", 6)
+    r.iteration_start(1, 6, 0)
+    r.retry("tests failed")
+    assert poster.calls[1][1] == "ts-1"        # run_start threads under the gate post
+    assert poster.calls[2][1] == "ts-1"        # loop replies thread under the gate post
+
+
+def test_null_and_multi_accept_gate():
+    NullReporter().gate("ok", "x")             # no exception = pass
+    a, b = _RecordingReporter(), _RecordingReporter()
+    MultiReporter([a, b]).gate("ok", "x")
+    assert a.events[-1] == "gate" and b.events[-1] == "gate"

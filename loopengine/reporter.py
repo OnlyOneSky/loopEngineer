@@ -17,6 +17,7 @@ class Reporter(Protocol):
     def run_start(self, run_id: str, spec_summary: str, agent: str, max_iterations: int) -> None: ...
     def iteration_start(self, n: int, max_n: int, elapsed_s: int) -> None: ...
     def phase(self, letter: str, name: str, status: str, detail: str = "") -> None: ...
+    def gate(self, status: str, detail: str = "") -> None: ...
     def retry(self, reason: str) -> None: ...
     def finished(self, status: str, outcome: str, artifact: str | None) -> None: ...
 
@@ -26,6 +27,7 @@ class NullReporter:
     def run_start(self, *a, **k) -> None: ...
     def iteration_start(self, *a, **k) -> None: ...
     def phase(self, *a, **k) -> None: ...
+    def gate(self, *a, **k) -> None: ...
     def retry(self, *a, **k) -> None: ...
     def finished(self, *a, **k) -> None: ...
 
@@ -51,6 +53,10 @@ class ConsoleReporter:
         glyph = _GLYPH.get(status, "•")
         tail = f"  {detail}" if detail else ""
         self._p(f"  {letter} {name:<9} {glyph}{tail}")
+
+    def gate(self, status, detail="") -> None:
+        glyph = _GLYPH.get(status, "•")
+        self._p(f"G Gate     {glyph}  {detail}")
 
     def retry(self, reason) -> None:
         self._p(f"  ⇒ retry — {_first_line(reason)}")
@@ -82,11 +88,21 @@ class SlackReporter:
         self._n = self._max_n = 0
 
     def run_start(self, run_id, spec_summary, agent, max_iterations) -> None:
-        self._thread_ts = self._poster.post(
+        # Joins the gate's thread when phase 0 already posted a root; otherwise
+        # this post becomes the root itself.
+        ts = self._poster.post(
             f"\U0001f501 *loopEngineer run started*\n"
             f"• spec: {spec_summary}\n"
             f"• agent: {agent}\n"
-            f"• iteration cap: {max_iterations}", None)
+            f"• iteration cap: {max_iterations}", self._thread_ts)
+        if self._thread_ts is None:
+            self._thread_ts = ts
+
+    def gate(self, status, detail="") -> None:
+        glyph = {"ok": "✅", "fail": "\U0001f6a8"}.get(status, "\U0001f9ea")
+        ts = self._poster.post(f"{glyph} *Gate* — {detail}", self._thread_ts)
+        if self._thread_ts is None:
+            self._thread_ts = ts
 
     def iteration_start(self, n, max_n, elapsed_s) -> None:
         self._buffer = []
@@ -132,6 +148,10 @@ class MultiReporter:
     def phase(self, *a, **k) -> None:
         for r in self._reporters:
             r.phase(*a, **k)
+
+    def gate(self, *a, **k) -> None:
+        for r in self._reporters:
+            r.gate(*a, **k)
 
     def retry(self, *a, **k) -> None:
         for r in self._reporters:
