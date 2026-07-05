@@ -186,3 +186,17 @@ def test_red_existing_suite_escalates_before_authoring(tmp_path):
     result = gate.synthesize_gate(SPEC, repo, agent, mem, tmp_path / ".wt")
     assert result["ok"] is False
     assert "existing suite is red" in result["reason"]
+
+
+from loopengine import config
+
+
+def test_greenfield_demo_shape():
+    demo = config.ROOT / "demo" / "greenfield-transfer"
+    assert (demo / "AGENTS.md").exists()
+    assert (demo / "specs" / "daily-limit.md").exists()
+    assert not (demo / "tests").exists()               # the loop authors the gate
+    spec = (demo / "specs" / "daily-limit.md").read_text()
+    assert "Stack & interface" in spec
+    assert all(f"AC-{n}" in spec for n in (1, 2, 3, 4))
+    assert "NotImplementedError" in (demo / "transferapp" / "transfer.py").read_text()
