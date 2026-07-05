@@ -339,9 +339,13 @@ def test_slack_reporter_gate_before_run_start_becomes_root():
     r = SlackReporter(poster)
     r.gate("ok", "frozen: 4 tests")
     assert poster.calls[0][1] is None          # posted standalone
+    # the realistic --gate synthesize sequence: run_start fires AFTER the gate
+    # and must join the gate's thread, not start a new root
+    r.run_start("run-1", "spec", "MockAgent", 6)
     r.iteration_start(1, 6, 0)
     r.retry("tests failed")
-    assert poster.calls[1][1] == "ts-1"        # loop replies thread under the gate post
+    assert poster.calls[1][1] == "ts-1"        # run_start threads under the gate post
+    assert poster.calls[2][1] == "ts-1"        # loop replies thread under the gate post
 
 
 def test_null_and_multi_accept_gate():
@@ -392,6 +396,21 @@ Add to `SlackReporter`:
     def gate(self, status, detail="") -> None:
         glyph = {"ok": "✅", "fail": "\U0001f6a8"}.get(status, "\U0001f9ea")
         ts = self._poster.post(f"{glyph} *Gate* — {detail}", self._thread_ts)
+        if self._thread_ts is None:
+            self._thread_ts = ts
+```
+
+Also fix `SlackReporter.run_start` so it does not clobber a thread root the gate
+already established (today it unconditionally overwrites `self._thread_ts`,
+which would orphan the gate post into a separate thread):
+
+```python
+    def run_start(self, run_id, spec_summary, agent, max_iterations) -> None:
+        ts = self._poster.post(
+            f"\U0001f501 *loopEngineer run started*\n"
+            f"• spec: {spec_summary}\n"
+            f"• agent: {agent}\n"
+            f"• iteration cap: {max_iterations}", self._thread_ts)
         if self._thread_ts is None:
             self._thread_ts = ts
 ```
@@ -625,7 +644,7 @@ def _greenfield_repo(tmp_path: Path) -> Path:
 
 
 def _write_good_tests(wt: Path):
-    (wt / "tests" / "acceptance").mkdir(parents=True)
+    (wt / "tests" / "acceptance").mkdir(parents=True, exist_ok=True)
     (wt / "tests" / "acceptance" / "test_daily_limit.py").write_text(GOOD_TESTS)
 
 
@@ -711,6 +730,9 @@ def synthesize_gate(spec_text: str, repo: Path, agent, memory: Memory,
 
             problem, red = _verify(worktree, spec_text, kept)
             if problem:
+                # Reset to the frozen baseline so a bad attempt's files cannot
+                # poison the next one (git clean removes the untracked kept files).
+                connectors.git_revert_paths(worktree, kept)
                 last_error = problem
                 reporter.gate("fail", _first(problem))
                 continue
