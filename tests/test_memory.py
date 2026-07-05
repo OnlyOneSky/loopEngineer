@@ -29,3 +29,11 @@ def test_finish_sets_result(tmp_path):
     on_disk = json.loads(m.path.read_text())
     assert on_disk["status"] == "converged"
     assert on_disk["result"] == {"outcome": "all gates passed", "artifact": "runs/run-3/pr-artifact.md"}
+
+
+def test_record_gate_persists(tmp_path):
+    m = Memory.create(tmp_path, "run-g", "spec.md", "repo", "loop/run-g", Caps())
+    assert m.state["gate"] is None
+    m.record_gate({"ok": True, "ref": "gate/run-g", "tests": ["tests/acceptance/test_x.py"]})
+    reloaded = json.loads(m.path.read_text())
+    assert reloaded["gate"]["ref"] == "gate/run-g"

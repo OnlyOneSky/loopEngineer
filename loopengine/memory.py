@@ -30,6 +30,7 @@ class Memory:
             "started_at": datetime.now(timezone.utc).isoformat(),
             "caps": {"max_iterations": caps.max_iterations,
                      "max_wall_seconds": caps.max_wall_seconds},
+            "gate": None,
             "status": "running",
             "iterations": [],
             "result": None,
@@ -37,6 +38,10 @@ class Memory:
         m = cls(path=run_dir / "state.json", run_dir=run_dir, state=state)
         m._flush()
         return m
+
+    def record_gate(self, info: dict) -> None:
+        self.state["gate"] = info
+        self._flush()
 
     def add_iteration(self, n: int, elapsed_s: int) -> dict:
         record = {"n": n, "elapsed_s": elapsed_s, "enforce": None,
