@@ -10,12 +10,13 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from . import skills
+from . import gate as gate_synthesis
 from .agents import Agent, ClaudeAgent, CodexAgent
 from .config import Caps, MAX_ITERATIONS, RUNS_DIR, ROOT
 from .demo import ensure_demo_repo
 from .memory import Memory
 from .orchestrator import run_loop
-from .reporter import ConsoleReporter, MultiReporter, Reporter, SlackReporter
+from .reporter import ConsoleReporter, MultiReporter, NullReporter, Reporter, SlackReporter
 from .slack import SlackPoster
 
 BACKENDS = {"claude": ClaudeAgent, "codex": CodexAgent}
@@ -24,10 +25,11 @@ BACKENDS = {"claude": ClaudeAgent, "codex": CodexAgent}
 def run(spec_path: Path, repo: Path, agent: Agent | None = None,
         caps: Caps | None = None, runs_dir: Path | None = None,
         worktree_root: Path | None = None, constitution_path: Path | None = None,
-        reporter: Reporter | None = None) -> dict:
+        reporter: Reporter | None = None, gate_mode: str = "provided") -> dict:
     spec_path, repo = Path(spec_path), Path(repo)
     agent = agent or ClaudeAgent()  # dev default; --agent overrides via main()
     caps = caps or Caps()
+    reporter = reporter or NullReporter()
     runs_dir = Path(runs_dir) if runs_dir else RUNS_DIR
     worktree_root = Path(worktree_root) if worktree_root else (ROOT / ".worktrees")
 
@@ -37,8 +39,20 @@ def run(spec_path: Path, repo: Path, agent: Agent | None = None,
     run_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S") + "-" + uuid.uuid4().hex[:6]
     branch = f"loop/{run_id}"
     memory = Memory.create(runs_dir, run_id, str(spec_path), str(repo), branch, caps)
+
+    base = "main"
+    if gate_mode == "synthesize":
+        result = gate_synthesis.synthesize_gate(
+            spec_text, repo, agent, memory, worktree_root, reporter)
+        if not result["ok"]:
+            reason = f"gate: {result['reason']}"
+            reporter.finished("escalated", reason, None)
+            memory.finish("escalated", reason, artifact=None)
+            return memory.state
+        base = result["ref"]
+
     return run_loop(spec_text, repo, agent, caps, memory, constitution,
-                    worktree_root, reporter)
+                    worktree_root, reporter, base=base)
 
 
 def _resolve_constitution(repo: Path, explicit: Path | None) -> str:
@@ -80,6 +94,10 @@ def main(argv: list[str] | None = None) -> int:
     runp.add_argument("--max-iterations", type=int, default=None,
                       help=f"iteration cap for THIS run, 1..{MAX_ITERATIONS} "
                            f"(default {MAX_ITERATIONS}); clamped to the hard ceiling")
+    runp.add_argument("--gate", choices=["provided", "synthesize"], default="provided",
+                      help="'synthesize': an independent test-author agent writes the "
+                           "acceptance gate from the spec before the loop (phase 0); "
+                           "'provided' (default): the repo's committed tests are the gate")
     runp.add_argument("--constitution", default=None,
                       help="path to the constitution the security critic enforces "
                            "(default: the repo's own, else skills/constitution.md)")
@@ -90,7 +108,7 @@ def main(argv: list[str] | None = None) -> int:
 
     state = run(Path(args.spec), Path(args.repo), agent=BACKENDS[args.agent](),
                 caps=caps, constitution_path=constitution_path,
-                reporter=_build_reporter())
+                reporter=_build_reporter(), gate_mode=args.gate)
     print(f"\nstatus: {state['status']}")
     if state.get("result"):
         print(f"outcome: {state['result']['outcome']}")
