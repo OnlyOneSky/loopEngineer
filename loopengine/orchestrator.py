@@ -17,10 +17,10 @@ from .reporter import NullReporter, Reporter
 
 def run_loop(spec_text: str, repo: Path, agent: Agent, caps: Caps,
              memory: Memory, constitution: str, worktree_root: Path,
-             reporter: Reporter | None = None) -> dict:
+             reporter: Reporter | None = None, base: str = "main") -> dict:
     reporter = reporter or NullReporter()
     branch = memory.state["branch"]
-    worktree = isolation.create_worktree(repo, branch, worktree_root)
+    worktree = isolation.create_worktree(repo, branch, worktree_root, base)
     start = time.time()
     last_error = ""
     spec_summary = _spec_summary(spec_text)
@@ -64,7 +64,7 @@ def run_loop(spec_text: str, repo: Path, agent: Agent, caps: Caps,
                 reporter.retry(f"tests failed: {_test_headline(tests['summary'])}")
                 continue
 
-            diff = connectors.git_diff(worktree, "main")
+            diff = connectors.git_diff(worktree, base)
 
             # D. QA critic (checker) — only meaningful after tests pass.
             qa = agent.qa_critic(spec_text, diff, tests["summary"])
@@ -94,7 +94,7 @@ def run_loop(spec_text: str, repo: Path, agent: Agent, caps: Caps,
             connectors.git_commit_all(worktree, f"agent: implement spec ({memory.state['run_id']})")
             artifact = connectors.write_pr_artifact(
                 memory.run_dir, spec_summary,
-                connectors.git_diff(worktree, "main"), qa, security)
+                connectors.git_diff(worktree, base), qa, security)
             reporter.finished("converged", "all gates passed", str(artifact))
             memory.finish("converged", "all gates passed", artifact=str(artifact))
             return memory.state

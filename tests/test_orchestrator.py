@@ -136,3 +136,27 @@ def test_reporter_narrates_retry_then_escalation(tmp_path):
     assert [e for e in spy.events if e[0] == "retry"]         # at least one retry
     assert spy.events[-1][0] == "finished"
     assert spy.events[-1][1][0] == "escalated"
+
+
+def test_run_loop_from_gate_base_keeps_pr_diff_implementation_only(tmp_path):
+    repo = _bank_repo(tmp_path)
+    # simulate a frozen gate: an extra acceptance test committed on gate/x
+    subprocess.run(["git", "-C", str(repo), "checkout", "-q", "-b", "gate/x"], check=True)
+    (repo / "tests" / "test_gate_extra.py").write_text(
+        "from decimal import Decimal\n"
+        "from bankapp.transfer import transfer\n\n"
+        "def test_gate_extra_under_limit():\n"
+        "    assert transfer(Decimal('1'), Decimal('0'), Decimal('100'), []) == 'OK'\n")
+    subprocess.run(["git", "-C", str(repo), "add", "-A"], check=True)
+    subprocess.run(["git", "-C", str(repo), "-c", "user.email=a@b.c",
+                    "-c", "user.name=t", "commit", "-q", "-m", "gate"], check=True)
+    subprocess.run(["git", "-C", str(repo), "checkout", "-q", "main"], check=True)
+
+    agent = MockAgent(actor_steps=[_write_decimal], security_fn=_security_fn)
+    mem = Memory.create(tmp_path / "runs", "run-b", "spec.md", str(repo), "loop/run-b", Caps())
+    state = orchestrator.run_loop("spec", repo, agent, Caps(), mem,
+                                  "constitution", tmp_path / ".wt", base="gate/x")
+    assert state["status"] == "converged"
+    artifact = Path(state["result"]["artifact"]).read_text()
+    assert "transfer.py" in artifact                   # implementation is in the diff
+    assert "test_gate_extra" not in artifact           # the gate tests are NOT
