@@ -65,10 +65,13 @@ The arc: *it just works → it fixes its own mistake → it knows when to stop.*
 | 1-iteration success | `demo/website` | converges first try (static site) |
 | Self-correction (~2 iterations) | `demo/bankapp` + `specs/transfer-limit-terse.md` | fails a gate, self-corrects, converges |
 | Escalation at the cap | `demo/impossible` | contradictory spec → never converges → escalates |
+| Self-authored gate | `demo/greenfield-transfer` + `--gate synthesize` | test-author agent writes the gate from the spec, then the loop implements against it |
 
-New CLI flags: `--max-iterations N` (per-run cap, clamped to the hard ceiling of 6)
-and `--constitution PATH` (default: the repo's own `constitution.md`, else
-`skills/constitution.md`). Slack status stream is opt-in via `SLACK_BOT_TOKEN` +
+New CLI flags: `--max-iterations N` (per-run cap, clamped to the hard ceiling of 6),
+`--constitution PATH` (default: the repo's own `constitution.md`, else
+`skills/constitution.md`), and `--gate synthesize` (phase 0: an independent
+test-author agent writes the acceptance gate from the spec before the loop;
+default `provided`). Slack status stream is opt-in via `SLACK_BOT_TOKEN` +
 `SLACK_CHANNEL` (channel ID); see the runbook.
 
 ## Safety properties

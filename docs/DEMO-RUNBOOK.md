@@ -13,6 +13,7 @@ to stop.** Don't lead with a failure.
 | 1 | 1-iteration success | `demo/website` | converges on attempt 1 | High |
 | 2 | Self-correction (~2 iterations) | `demo/bankapp` (terse spec) | fails once, fixes, converges | Typical, **not guaranteed** — record it |
 | 3 | Escalation at the cap | `demo/impossible` | never converges → escalates | **Deterministic** (fails the test gate every time) |
+| 4 | Self-authored gate (spec → tests → code) | `demo/greenfield-transfer` | loop writes its own gate, then converges | High (record it) |
 
 > **Golden rule:** rehearse every scenario on the demo machine the day before and
 > screen-record each run into `demo/recordings/`. Real agents are
@@ -167,6 +168,38 @@ expect it to take noticeably longer — lean on the recording for the full-6 ver
 `⇒ retry` shows the same unwinnable failure, then `⇒ ESCALATED — iteration cap`.
 **With Slack on**, the 🚨 *Escalated* verdict lands in the channel — that's your
 human-in-the-loop beat: the loop gave up safely and pinged a human.
+
+---
+
+## Scenario 4 — "It writes its own gate" (spec → tests → code)
+
+**Say:** "Everything so far graded the agent against tests a human wrote. This
+repo has NO tests at all — only an approved spec. Watch phase 0: an independent
+test-author agent turns the spec into the acceptance gate, our code verifies
+the gate is real — it must fail on the unimplemented code, cover every
+acceptance criterion, and be deterministic — freezes it, and only then does the
+actor implement against it. The only human step left is approving the spec."
+
+```bash
+.venv/bin/python -m loopengine run \
+  --spec demo/greenfield-transfer/specs/daily-limit.md \
+  --repo demo/greenfield-transfer \
+  --agent claude \
+  --gate synthesize
+```
+
+**What they see:** `G Gate` lines first — authoring, verification, then
+`G Gate ✓ frozen: 1 test file(s) · 4 red on baseline → gate/<run-id>` — followed
+by the normal iteration loop converging against the gate it just wrote.
+
+**Close the loop:** open the PR artifact (implementation-only diff) and show
+`git show gate/<run-id>:tests/acceptance/test_daily_limit.py` (run inside
+`demo/greenfield-transfer`) — the tests the loop wrote and was graded against.
+Point out the actor could not edit them (phase B), and the vacuity check proved
+they were red before implementation.
+
+**If gate synthesis fails live:** that IS the safety story — the run escalates
+and the loop never starts. Narrate it and rerun (or cut to the recording).
 
 ---
 
