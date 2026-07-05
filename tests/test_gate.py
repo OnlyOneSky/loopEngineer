@@ -79,3 +79,110 @@ def test_synthesize_gate_happy_path(tmp_path):
     assert _git(repo, "rev-parse", "main").stdout.strip() == main_before
     # recorded in memory
     assert mem.state["gate"]["ok"] is True
+
+
+def _write_vacuous_tests(wt: Path):
+    (wt / "tests" / "acceptance").mkdir(parents=True, exist_ok=True)
+    (wt / "tests" / "acceptance" / "test_daily_limit.py").write_text(
+        "def test_ac1_nothing():\n    assert True\n\n"
+        "def test_ac2_nothing():\n    assert True\n")
+
+
+def _write_broken_tests(wt: Path):
+    (wt / "tests" / "acceptance").mkdir(parents=True, exist_ok=True)
+    (wt / "tests" / "acceptance" / "test_daily_limit.py").write_text(
+        "def test_ac1_broken(:\n    pass\n")          # syntax error
+
+
+def _write_ac1_only(wt: Path):
+    (wt / "tests" / "acceptance").mkdir(parents=True, exist_ok=True)
+    (wt / "tests" / "acceptance" / "test_daily_limit.py").write_text(
+        "from decimal import Decimal\n"
+        "from transferapp.transfer import transfer\n\n"
+        "def test_ac1_under_limit_allowed():\n"
+        "    assert transfer(Decimal('10'), Decimal('0'), Decimal('100'), []) == 'OK'\n")
+
+
+def _write_flip_test(wt: Path):
+    (wt / "tests" / "acceptance").mkdir(parents=True, exist_ok=True)
+    (wt / "tests" / "acceptance" / "test_daily_limit.py").write_text(
+        "from pathlib import Path\n\n"
+        "def test_ac1_flip():\n"
+        "    m = Path('flip.marker')\n"
+        "    existed = m.exists()\n"
+        "    m.touch()\n"
+        "    assert existed\n\n"                       # run 1 fails, run 2 passes
+        "def test_ac2_anchor():\n    assert False\n")
+
+
+def _write_tests_and_implementation(wt: Path):
+    _write_good_tests(wt)
+    (wt / "transferapp" / "transfer.py").write_text("SNEAKY = True\n")
+
+
+def test_vacuous_gate_retries_then_escalates(tmp_path):
+    repo = _greenfield_repo(tmp_path)
+    agent = MockAgent(actor_steps=[],
+                      test_author_steps=[_write_vacuous_tests, _write_vacuous_tests])
+    mem = _mem(tmp_path, repo, "run-vac")
+    result = gate.synthesize_gate(SPEC, repo, agent, mem, tmp_path / ".wt",
+                                  max_attempts=2)
+    assert result["ok"] is False
+    assert "vacuous" in result["reason"]
+    assert mem.state["gate"]["ok"] is False
+
+
+def test_unloadable_suite_is_a_failed_attempt(tmp_path):
+    repo = _greenfield_repo(tmp_path)
+    agent = MockAgent(actor_steps=[],
+                      test_author_steps=[_write_broken_tests, _write_good_tests])
+    mem = _mem(tmp_path, repo, "run-load")
+    result = gate.synthesize_gate(SPEC, repo, agent, mem, tmp_path / ".wt")
+    assert result["ok"] is True and result["attempts"] == 2   # recovered on retry
+
+
+def test_missing_ac_coverage_names_the_gap(tmp_path):
+    repo = _greenfield_repo(tmp_path)
+    agent = MockAgent(actor_steps=[], test_author_steps=[_write_ac1_only])
+    mem = _mem(tmp_path, repo, "run-ac")
+    result = gate.synthesize_gate(SPEC, repo, agent, mem, tmp_path / ".wt",
+                                  max_attempts=1)
+    assert result["ok"] is False
+    assert "AC-2" in result["reason"]
+
+
+def test_nondeterministic_gate_is_rejected(tmp_path):
+    repo = _greenfield_repo(tmp_path)
+    agent = MockAgent(actor_steps=[], test_author_steps=[_write_flip_test])
+    mem = _mem(tmp_path, repo, "run-flip")
+    result = gate.synthesize_gate(SPEC, repo, agent, mem, tmp_path / ".wt",
+                                  max_attempts=1)
+    assert result["ok"] is False
+    assert "nondeterministic" in result["reason"]
+
+
+def test_author_implementation_writes_are_reverted(tmp_path):
+    repo = _greenfield_repo(tmp_path)
+    agent = MockAgent(actor_steps=[],
+                      test_author_steps=[_write_tests_and_implementation])
+    mem = _mem(tmp_path, repo, "run-scope")
+    result = gate.synthesize_gate(SPEC, repo, agent, mem, tmp_path / ".wt")
+    assert result["ok"] is True                        # tests kept, impl reverted
+    show = subprocess.run(["git", "-C", str(repo), "show",
+                           "gate/run-scope:transferapp/transfer.py"],
+                          capture_output=True, text=True).stdout
+    assert "SNEAKY" not in show and "NotImplementedError" in show
+
+
+def test_red_existing_suite_escalates_before_authoring(tmp_path):
+    repo = _greenfield_repo(tmp_path)
+    (repo / "tests").mkdir()
+    (repo / "tests" / "test_old.py").write_text("def test_old():\n    assert False\n")
+    subprocess.run(["git", "-C", str(repo), "add", "-A"], check=True)
+    subprocess.run(["git", "-C", str(repo), "-c", "user.email=a@b.c",
+                    "-c", "user.name=t", "commit", "-q", "-m", "red suite"], check=True)
+    agent = MockAgent(actor_steps=[], test_author_steps=[])   # never called
+    mem = _mem(tmp_path, repo, "run-red")
+    result = gate.synthesize_gate(SPEC, repo, agent, mem, tmp_path / ".wt")
+    assert result["ok"] is False
+    assert "existing suite is red" in result["reason"]
