@@ -8,7 +8,7 @@ def test_caps_defaults_match_module_constants():
 
 
 def test_protected_paths():
-    assert config.PROTECTED == ("tests/", "constitution.md")
+    assert config.PROTECTED == ("tests/", "constitution.md", "AGENTS.md", "CLAUDE.md")
 
 
 def test_paths_anchor_to_project_root():
