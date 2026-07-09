@@ -23,6 +23,56 @@ to stop.** Don't lead with a failure.
 
 ---
 
+## Board-driven flow (Taiga + loop-hub) — the headline demo
+
+The 2026-07 build added `loop-hub` (in the main hackathon repo, `loopHub/`):
+the board drives everything and the CLI scenarios below become the fallback.
+Rehearsed end-to-end 2026-07-09; measured timings in the table.
+
+**Start the stack (before the audience):**
+
+```bash
+# 1. Taiga (from taiga-docker/): docker compose up -d   → UI on localhost:9000
+# 2. loop-hub (from loopHub/):
+set -a; source .env; set +a
+uv run --with fastapi --with uvicorn --with httpx python -m hub   # port 8400
+# sanity: startup log must show "resolved status ids" for all 3 projects
+```
+
+**The three acts, all driven by dragging cards in the Taiga UI (payments-board):**
+
+| Act | Card | What the audience sees | Measured |
+|-----|------|------------------------|----------|
+| 一次就過 | PM story + `repo=bankapp`, drag Backlog→Spec Drafting | AI spec lands in the card (~1m35s), auto-moves to Spec Review with @reviewer comment; reviewer resolves Open questions, drags to Dev; loop converges; card lands in PR-Done with the PR artifact | spec 1m35s + loop 3m13s |
+| 自我修正 | reviewer replaces spec with `demo/bankapp/specs/transfer-limit-terse.md`, approves | loop fails a gate on attempt 1, self-corrects, converges (2 iterations) | 5m09s |
+| 知所進退 | reviewer replaces spec with `demo/impossible/specs/*` (contradictory), approves | loop exhausts the cap, card returns to Spec Review with the failure report as a comment — safe refusal | 6m07s |
+
+**Guardrail beats to show between acts (each is one drag):**
+- Drag a Backlog card straight to Dev → bounced back with a ⛔ comment.
+- Approve a spec that still has *Open questions* → bounced back to Spec Review.
+- Drag Spec Review→Spec Drafting without leaving a comment → bounced (feedback required).
+
+**The live failure drill (rehearsed, works):** kill loop-hub mid-demo
+(`kill $(lsof -ti :8400)`), drag a card into Spec Drafting while it's down
+(webhook lost — Taiga does not retry), restart loop-hub — within 60 s the
+reconciliation poller logs `poller: re-enqueued story N` and the draft appears.
+Say: "no event is load-bearing; the board state is."
+
+**Reset between rehearsals:** move cards back to Backlog (never delete — the
+comment history is part of the story) and `rm loopHub/loop-hub.sqlite3` if you
+want a clean queue.
+
+**Gotchas already hit so you don't re-hit them:**
+- Taiga webhooks silently fail unless taiga-back/async have
+  `WEBHOOKS_ENABLED=True` **and** `WEBHOOKS_ALLOW_PRIVATE_ADDRESS=True`
+  (the infra doc's `WEBHOOKS_BLOCK_PRIVATE_ADDRESS` name does not exist).
+  Check Project → Settings → Integrations → webhook logs when in doubt.
+- If Docker Desktop restarts, `docker compose up -d` in taiga-docker/ brings
+  Taiga back with all data (volumes persist), then restart loop-hub.
+- `codex` CLI is not on this machine — everything runs `--agent claude`.
+
+---
+
 ## The five phases (put this slide up before you run anything)
 
 Every iteration runs the same five stages. The agent only does **A**; *our* code
