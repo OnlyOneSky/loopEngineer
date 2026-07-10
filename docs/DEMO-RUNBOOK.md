@@ -39,16 +39,24 @@ uv run --with fastapi --with uvicorn --with httpx python -m hub   # port 8400
 # sanity: startup log must show "resolved status ids" for all 3 projects
 ```
 
-**The three acts, all driven by dragging cards in the Taiga UI (payments-board):**
+**Board layout (2026-07-10):** project 1 is now **Angular Frontend** (was
+payments-board); columns on ALL boards are `To-Do / Spec Drafting / Spec
+Review / Dev / PR / Done`. Team 1's registry includes `hackdemo` — an Angular
+app (github.com/OnlyOneSky/hackDemo) whose gate runs its OWN framework
+(`ng test`, vitest/TestBed) via `loop.toml`, with `gate_mode = "synthesize"`:
+the test-author agent writes framework-native specs as the gate, and merging
+the PR merges those specs into the regression suite.
+
+**The three acts, all driven by dragging cards in the Taiga UI:**
 
 | Act | Card | What the audience sees | Measured |
 |-----|------|------------------------|----------|
-| 一次就過 | PM story + `repo=bankapp`, drag Backlog→Spec Drafting | AI spec lands in the card (~1m35s), auto-moves to Spec Review with @reviewer comment; reviewer resolves Open questions, drags to Dev; loop converges; card lands in PR-Done with the PR artifact | spec 1m35s + loop 3m13s |
+| 一次就過 | PM story + `repo=bankapp`, drag To-Do→Spec Drafting | AI spec lands in the card (~1m35s), auto-moves to Spec Review with @reviewer comment; reviewer resolves Open questions, drags to Dev; loop converges; card lands in PR with the artifact | spec 1m35s + loop 3m13s |
 | 自我修正 | reviewer replaces spec with `demo/bankapp/specs/transfer-limit-terse.md`, approves | loop fails a gate on attempt 1, self-corrects, converges (2 iterations) | 5m09s |
 | 知所進退 | reviewer replaces spec with `demo/impossible/specs/*` (contradictory), approves | loop exhausts the cap, card returns to Spec Review with the failure report as a comment — safe refusal | 6m07s |
 
 **Guardrail beats to show between acts (each is one drag):**
-- Drag a Backlog card straight to Dev → bounced back with a ⛔ comment.
+- Drag a To-Do card straight to Dev → bounced back with a ⛔ comment.
 - Approve a spec that still has *Open questions* → bounced back to Spec Review.
 - Drag Spec Review→Spec Drafting without leaving a comment → bounced (feedback required).
 
@@ -58,7 +66,7 @@ uv run --with fastapi --with uvicorn --with httpx python -m hub   # port 8400
 reconciliation poller logs `poller: re-enqueued story N` and the draft appears.
 Say: "no event is load-bearing; the board state is."
 
-**Reset between rehearsals:** move cards back to Backlog (never delete — the
+**Reset between rehearsals:** move cards back to To-Do (never delete — the
 comment history is part of the story) and `rm loopHub/loop-hub.sqlite3` if you
 want a clean queue.
 

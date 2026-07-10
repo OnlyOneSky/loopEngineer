@@ -67,6 +67,12 @@ The arc: *it just works → it fixes its own mistake → it knows when to stop.*
 | Escalation at the cap | `demo/impossible` | contradictory spec → never converges → escalates |
 | Self-authored gate | `demo/greenfield-transfer` + `--gate synthesize` | test-author agent writes the gate from the spec, then the loop implements against it |
 
+Per-repo gate config: a target repo may carry `loop.toml` with a `[gate]`
+table — `test_command` (run the project's own framework, e.g. `npx ng test`;
+default pytest), `gate_mode` (`provided`/`synthesize`), `author_dir` (where the
+test-author writes; default `tests/acceptance/`), `protected_paths` (extends
+the Actor's read-only set). See `demo`-external example: OnlyOneSky/hackDemo.
+
 New CLI flags: `--max-iterations N` (per-run cap, clamped to the hard ceiling of 6),
 `--constitution PATH` (default: the repo's own `constitution.md`, else
 `skills/constitution.md`), and `--gate synthesize` (phase 0: an independent
