@@ -7,22 +7,45 @@ import json
 import os
 import subprocess
 import sys
+import tomllib
 from pathlib import Path
+
+
+def gate_config(repo: Path) -> dict:
+    """The repo's `loop.toml` [gate] table: `test_command` (run the project's own
+    framework, e.g. `npx ng test`), optional `gate_mode`. Absent -> {} and the
+    pytest default applies."""
+    f = Path(repo) / "loop.toml"
+    if not f.is_file():
+        return {}
+    try:
+        return tomllib.loads(f.read_text(encoding="utf-8")).get("gate", {})
+    except (tomllib.TOMLDecodeError, OSError):
+        return {}
 
 
 def run_tests(repo: Path) -> dict:
     """DETERMINISTIC GATE. We run the tests ourselves; the agent never self-certifies.
 
-    Uses sys.executable (the interpreter running the loop) so tests run under the
-    same venv; the `-m pytest` form prepends cwd to sys.path so the target package
-    in the worktree imports cleanly.
-    Suppresses bytecode + pytest cache so the worktree stays clean for the
-    post-run protected-path check."""
-    env = {**os.environ, "PYTHONDONTWRITEBYTECODE": "1"}
+    Default: pytest under sys.executable (same venv; `-m pytest` prepends cwd to
+    sys.path so the target package imports cleanly). A repo may override via
+    `loop.toml` [gate] test_command so the gate runs the project's OWN framework
+    (vitest / ng test / Jest / ...) — the command ships in the reviewed repo, the
+    same trust level as the code the loop already executes. `custom` in the
+    result tells gate synthesis to use exit-code semantics instead of parsing
+    pytest output. Suppresses bytecode + pytest cache so the worktree stays
+    clean for the post-run protected-path check."""
+    env = {**os.environ, "PYTHONDONTWRITEBYTECODE": "1", "CI": "1"}
+    cmd = gate_config(repo).get("test_command")
+    if cmd:
+        proc = subprocess.run(cmd, shell=True, cwd=repo,
+                              capture_output=True, text=True, env=env)
+        return {"passed": proc.returncode == 0, "returncode": proc.returncode,
+                "summary": proc.stdout + proc.stderr, "custom": True}
     proc = subprocess.run([sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider"],
                           cwd=repo, capture_output=True, text=True, env=env)
     return {"passed": proc.returncode == 0, "returncode": proc.returncode,
-            "summary": proc.stdout + proc.stderr}
+            "summary": proc.stdout + proc.stderr, "custom": False}
 
 
 def git_changed_paths(repo: Path) -> list[str]:

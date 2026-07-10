@@ -35,7 +35,8 @@ def synthesize_gate(spec_text: str, repo: Path, agent, memory: Memory,
             reporter.gate("info", f"synthesizing acceptance gate "
                                   f"(attempt {attempt}/{max_attempts})")
             agent.test_author(spec_text, last_error, worktree)
-            kept, reverted = isolation.enforce_author_scope(worktree, ("tests/",))
+            author_dir = connectors.gate_config(worktree).get("author_dir", "tests/")
+            kept, reverted = isolation.enforce_author_scope(worktree, (author_dir,))
             if reverted:
                 reporter.gate("info", f"reverted {len(reverted)} out-of-scope write(s)")
 
@@ -68,8 +69,23 @@ def _verify(worktree: Path, spec_text: str,
             new_files: list[str]) -> tuple[str | None, set[str]]:
     """The mechanical gate-on-the-gate. Returns (problem, red_test_ids)."""
     if not new_files:
-        return "no new test files were written under tests/", set()
+        return "no new test files were written in the gate author directory", set()
     run1 = connectors.run_tests(worktree)
+    if run1.get("custom"):
+        # Framework-agnostic path (loop.toml test_command): exit-code semantics.
+        # We cannot attribute individual failures to files, so the red/vacuity
+        # checks are coarser; AC coverage below still applies.
+        run2 = connectors.run_tests(worktree)      # determinism: run twice
+        if run1["returncode"] != run2["returncode"]:
+            return ("the gate is nondeterministic: two identical baseline runs "
+                    f"exited {run1['returncode']} vs {run2['returncode']}"), set()
+        if run1["returncode"] == 0:
+            return ("vacuous gate: the suite passes on the UNIMPLEMENTED code — "
+                    "the new tests do not exercise the new behavior"), set()
+        missing = _uncovered_acs(spec_text, worktree, new_files)
+        if missing:
+            return "acceptance criteria without a mapped test: " + ", ".join(missing), set()
+        return None, {f"suite:exit-{run1['returncode']}"}
     if run1["returncode"] in (2, 3, 4):
         return f"the test suite fails to load:\n{run1['summary'][-800:]}", set()
     if run1["returncode"] == 5:

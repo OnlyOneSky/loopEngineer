@@ -41,8 +41,12 @@ def run_loop(spec_text: str, repo: Path, agent: Agent, caps: Caps,
             changed = connectors.git_changed_paths(worktree)
             reporter.phase("A", "Actor", "info", f"{len(changed)} path(s) changed")
 
-            # B. Enforce read-only-tests rule AFTER the turn.
-            ok, why = isolation.assert_no_protected_changes(worktree, PROTECTED)
+            # B. Enforce read-only-tests rule AFTER the turn. The repo's
+            # loop.toml may extend the protected set (e.g. src/tests/ for an
+            # Angular suite the framework requires to live inside src/).
+            protected = PROTECTED + tuple(
+                connectors.gate_config(worktree).get("protected_paths", ()))
+            ok, why = isolation.assert_no_protected_changes(worktree, protected)
             memory.update_iteration(enforce={"ok": ok, "reason": why})
             reporter.phase("B", "Enforce", "ok" if ok else "fail",
                            "protected paths clean" if ok else why)

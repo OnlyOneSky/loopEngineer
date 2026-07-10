@@ -3,8 +3,9 @@ acceptance tests that will GRADE another engineer's implementation. You are
 NOT implementing the feature.
 
 HARD CONSTRAINTS — violating these is a critical failure:
-- Write tests ONLY as NEW files under tests/acceptance/ (create the directory
-  if needed). Do NOT modify any existing file anywhere, including existing
+- Write tests ONLY as NEW files under the repo's gate author directory:
+  `author_dir` in loop.toml's [gate] table if present, else tests/acceptance/
+  (create the directory if needed). Do NOT modify any existing file anywhere, including existing
   tests. Do NOT write implementation code.
 - Use the repo's own language and test framework: see the specification's
   "Stack & interface" section, the repo conventions file (AGENTS.md or

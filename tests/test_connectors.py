@@ -75,3 +75,33 @@ def test_run_tests_reports_returncode(tmp_path):
     (bad / "tests" / "test_bad.py").write_text("def test_bad():\n    assert False\n")
     res = connectors.run_tests(bad)
     assert res["returncode"] == 1 and res["passed"] is False
+
+
+def test_gate_config_absent_is_empty(tmp_path):
+    assert connectors.gate_config(tmp_path) == {}
+
+
+def test_run_tests_honors_loop_toml_test_command(tmp_path):
+    repo = tmp_path / "r2"
+    repo.mkdir()
+    (repo / "loop.toml").write_text('[gate]\ntest_command = "echo custom-runner && exit 0"\n')
+    result = connectors.run_tests(repo)
+    assert result["passed"] and result["custom"]
+    assert "custom-runner" in result["summary"]
+
+
+def test_run_tests_custom_command_failure(tmp_path):
+    repo = tmp_path / "r3"
+    repo.mkdir()
+    (repo / "loop.toml").write_text('[gate]\ntest_command = "exit 3"\n')
+    result = connectors.run_tests(repo)
+    assert not result["passed"] and result["returncode"] == 3 and result["custom"]
+
+
+def test_run_tests_malformed_loop_toml_falls_back_to_pytest(tmp_path):
+    repo = tmp_path / "r4"
+    (repo / "tests").mkdir(parents=True)
+    (repo / "tests" / "test_x.py").write_text("def test_ok():\n    assert True\n")
+    (repo / "loop.toml").write_text("not [ valid toml")
+    result = connectors.run_tests(repo)
+    assert result["passed"] and not result["custom"]
